@@ -8,6 +8,10 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Check before you pay" })).toBeInTheDocument();
     expect(screen.getByLabelText("Recipient address")).toBeInTheDocument();
     expect(screen.getByLabelText("Amount in USDC")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Run risk check" })).toBeEnabled();
+    expect(screen.getByLabelText("Associated website (optional)")).toBeInTheDocument();
+
+    const button = screen.getByRole("button", { name: "Run risk check" });
+    expect(button).toBeEnabled();
+    expect(button).toHaveAttribute("type", "button");
   });
 });

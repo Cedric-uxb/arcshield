@@ -24,7 +24,7 @@ export default function App() {
             <input name="website" type="url" />
           </label>
 
-          <button type="submit">Run risk check</button>
+          <button type="button">Run risk check</button>
         </form>
       </main>
     </>
