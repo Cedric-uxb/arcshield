@@ -55,7 +55,7 @@ const FINDINGS = {
     code: "ADDRESS_SELF",
     level: "high",
     title: "Sender and recipient match",
-    detail: "The payment would be sent back to the connected account.",
+    detail: "The payment would be sent back to the sender address.",
   },
   ADDRESS_CONTRACT: {
     code: "ADDRESS_CONTRACT",
@@ -135,13 +135,15 @@ export function analyzePayment(input: PaymentInput): RiskReport {
     findings.push({ ...FINDINGS[code] });
   };
 
+  const recipient = input.recipient.trim();
+  const sender = input.sender?.trim();
   let normalizedRecipient: `0x${string}` | undefined;
-  if (!isAddress(input.recipient)) {
+  if (!isAddress(recipient)) {
     addFinding("ADDRESS_INVALID");
   } else {
-    normalizedRecipient = getAddress(input.recipient);
+    normalizedRecipient = getAddress(recipient);
     if (normalizedRecipient === zeroAddress) addFinding("ADDRESS_ZERO");
-    if (input.sender && isAddress(input.sender) && getAddress(input.sender) === normalizedRecipient) {
+    if (sender && isAddress(sender) && getAddress(sender) === normalizedRecipient) {
       addFinding("ADDRESS_SELF");
     }
     if (input.recipientHasCode) addFinding("ADDRESS_CONTRACT");
@@ -154,11 +156,14 @@ export function analyzePayment(input: PaymentInput): RiskReport {
     try {
       const url = new URL(website);
       const hostname = url.hostname;
-      normalizedWebsite = url.href;
 
       if (url.protocol !== "https:") addFinding("URL_NO_HTTPS");
       if (isIpHostname(hostname)) addFinding("URL_IP_HOST");
-      if (url.username || url.password) addFinding("URL_CREDENTIALS");
+      if (url.username || url.password) {
+        addFinding("URL_CREDENTIALS");
+        url.username = "";
+        url.password = "";
+      }
       if (hostname.split(".").some((label) => label.toLowerCase().startsWith("xn--"))) {
         addFinding("URL_PUNYCODE");
       }
@@ -166,6 +171,7 @@ export function analyzePayment(input: PaymentInput): RiskReport {
         addFinding("URL_MANY_SUBDOMAINS");
       }
       if (hostname.length > 80) addFinding("URL_LONG_HOST");
+      normalizedWebsite = url.href;
     } catch {
       addFinding("URL_INVALID");
     }

@@ -9,6 +9,26 @@ describe("analyzePayment", () => {
     expect(analyzePayment({ recipient: "bad" }).level).toBe("high");
   });
 
+  it("trims and normalizes a whitespace-wrapped recipient", () => {
+    const report = analyzePayment({ recipient: ` \t${account}\n` });
+
+    expect(report.level).toBe("low");
+    expect(report.normalizedRecipient).toBe(account);
+    expect(report.codes).not.toContain("ADDRESS_INVALID");
+  });
+
+  it("trims a whitespace-wrapped sender before detecting a self payment", () => {
+    const report = analyzePayment({ recipient: account, sender: ` \t${account}\n` });
+
+    expect(report.codes).toContain("ADDRESS_SELF");
+    expect(report.findings).toContainEqual({
+      code: "ADDRESS_SELF",
+      level: "high",
+      title: "Sender and recipient match",
+      detail: "The payment would be sent back to the sender address.",
+    });
+  });
+
   it.each<[string, PaymentInput, RiskCode]>([
     ["zero address", { recipient: zeroAddress }, "ADDRESS_ZERO"],
     ["self payment", { recipient: account, sender: account }, "ADDRESS_SELF"],
@@ -59,6 +79,56 @@ describe("analyzePayment", () => {
     expect(
       analyzePayment({ recipient: account, website: "https://pay.example.com" }).level,
     ).toBe("low");
+  });
+
+  it("removes credentials from the normalized website", () => {
+    const report = analyzePayment({
+      recipient: account,
+      website: "https://user:pass@example.com/path?mode=pay#review",
+    });
+
+    expect(report.codes).toContain("URL_CREDENTIALS");
+    expect(report.normalizedWebsite).toBe("https://example.com/path?mode=pay#review");
+  });
+
+  it("flags more than four hostname labels at the exact boundary", () => {
+    const fourLabels = analyzePayment({
+      recipient: account,
+      website: "https://a.b.example.com",
+    });
+    const fiveLabels = analyzePayment({
+      recipient: account,
+      website: "https://a.b.c.example.com",
+    });
+
+    expect(fourLabels.codes).not.toContain("URL_MANY_SUBDOMAINS");
+    expect(fiveLabels.codes).toContain("URL_MANY_SUBDOMAINS");
+  });
+
+  it("flags hostnames longer than 80 characters at the exact boundary", () => {
+    const hostname80 = `${"a".repeat(63)}.${"b".repeat(16)}`;
+    const hostname81 = `${"a".repeat(63)}.${"b".repeat(17)}`;
+
+    expect(
+      analyzePayment({ recipient: account, website: `https://${hostname80}` }).codes,
+    ).not.toContain("URL_LONG_HOST");
+    expect(
+      analyzePayment({ recipient: account, website: `https://${hostname81}` }).codes,
+    ).toContain("URL_LONG_HOST");
+  });
+
+  it("flags a noncanonical IPv4 host after URL normalization", () => {
+    const report = analyzePayment({ recipient: account, website: "https://127.1/login" });
+
+    expect(report.normalizedWebsite).toBe("https://127.0.0.1/login");
+    expect(report.codes).toContain("URL_IP_HOST");
+  });
+
+  it("flags a Unicode IDN after URL normalization to punycode", () => {
+    const report = analyzePayment({ recipient: account, website: "https://bücher.example" });
+
+    expect(report.normalizedWebsite).toBe("https://xn--bcher-kva.example/");
+    expect(report.codes).toContain("URL_PUNYCODE");
   });
 
   it("marks denylisted recipients as high risk", () => {
