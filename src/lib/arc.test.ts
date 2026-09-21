@@ -1,4 +1,7 @@
 import {
+  ContractFunctionExecutionError,
+  ContractFunctionRevertedError,
+  RpcRequestError,
   decodeFunctionData,
   encodeFunctionData,
   hexToString,
@@ -283,7 +286,11 @@ describe("Arc reads and wallet operations", () => {
 
   it("maps simulation transport errors to RPC_FAILURE", async () => {
     clients.publicClient.simulateContract.mockRejectedValue(
-      Object.assign(new Error("RPC unavailable"), { name: "RpcRequestError" }),
+      new RpcRequestError({
+        body: { method: "eth_call", params: [] },
+        error: { code: -32603, message: "RPC unavailable" },
+        url: ARC_RPC_URL,
+      }),
     );
 
     await expect(
@@ -291,15 +298,29 @@ describe("Arc reads and wallet operations", () => {
     ).rejects.toMatchObject({ code: "RPC_FAILURE" });
   });
 
-  it("maps contract rejection to SIMULATION_FAILURE", async () => {
-    clients.publicClient.simulateContract.mockRejectedValue(
-      Object.assign(new Error("execution reverted"), {
-        name: "ContractFunctionRevertedError",
-      }),
-    );
+  it("prioritizes a nested contract revert over its RPC wrapper", async () => {
+    const payment = buildMemoPayment(input);
+    const rpcCause = new RpcRequestError({
+      body: { method: "eth_call", params: [] },
+      error: { code: -32603, message: "execution reverted" },
+      url: ARC_RPC_URL,
+    });
+    const revertCause = new ContractFunctionRevertedError({
+      abi: memoAbi,
+      functionName: "memo",
+      message: "execution reverted",
+      cause: rpcCause,
+    });
+    const simulationError = new ContractFunctionExecutionError(revertCause, {
+      abi: memoAbi,
+      args: [...payment.args],
+      contractAddress: MEMO_ADDRESS,
+      functionName: "memo",
+    });
+    clients.publicClient.simulateContract.mockRejectedValue(simulationError);
 
     await expect(
-      sendGuardedPayment(buildMemoPayment(input)),
+      sendGuardedPayment(payment),
     ).rejects.toMatchObject({ code: "SIMULATION_FAILURE" });
   });
 

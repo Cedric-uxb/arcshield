@@ -361,6 +361,16 @@ function mapArcError(
     );
   }
   if (
+    fallback === "SIMULATION_FAILURE" &&
+    description.includes("contractfunctionrevertederror")
+  ) {
+    return new ArcShieldError(
+      "SIMULATION_FAILURE",
+      "The payment could not be simulated safely and was not sent.",
+      error,
+    );
+  }
+  if (
     description.includes("rpcrequesterror") ||
     description.includes("httprequesterror") ||
     description.includes("providerrpcerror") ||
