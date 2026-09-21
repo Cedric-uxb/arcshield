@@ -2,6 +2,7 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  decodeFunctionData,
   encodeFunctionData,
   http,
   keccak256,
@@ -55,7 +56,9 @@ export type ArcShieldErrorCode =
   | "WRONG_NETWORK"
   | "INSUFFICIENT_FUNDS"
   | "SIMULATION_FAILURE"
-  | "RPC_FAILURE";
+  | "RPC_FAILURE"
+  | "TRANSACTION_REVERTED"
+  | "UNSUPPORTED_ACCOUNT";
 
 export class ArcShieldError extends Error {
   readonly code: ArcShieldErrorCode;
@@ -104,6 +107,14 @@ export function buildMemoPayment({
   report,
   operationId,
 }: BuildMemoPaymentInput) {
+  const fractionalDigits = amount.trim().match(/^[+-]?\d*\.(\d+)$/)?.[1];
+  if (fractionalDigits && fractionalDigits.length > 6) {
+    throw new ArcShieldError(
+      "INVALID_AMOUNT",
+      "USDC amounts can have at most six decimal places.",
+    );
+  }
+
   let units: bigint;
   try {
     units = parseUnits(amount, 6);
@@ -202,6 +213,7 @@ export async function switchToArc(): Promise<void> {
 }
 
 export async function sendGuardedPayment(payment: ReturnType<typeof buildMemoPayment>) {
+  await preflightPayment(payment);
   const request = await simulateMemoPayment(payment);
   const walletClient = getWalletClient();
 
@@ -212,17 +224,59 @@ export async function sendGuardedPayment(payment: ReturnType<typeof buildMemoPay
     throw mapArcError(error, "RPC_FAILURE");
   }
 
+  let receipt: Awaited<ReturnType<typeof publicClient.waitForTransactionReceipt>>;
   try {
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
-    if (receipt.status !== "success") {
-      throw new ArcShieldError(
-        "RPC_FAILURE",
-        "The payment transaction did not complete successfully.",
-      );
-    }
-    return { hash, receipt };
+    receipt = await publicClient.waitForTransactionReceipt({ hash });
   } catch (error) {
     throw mapArcError(error, "RPC_FAILURE");
+  }
+  if (receipt.status !== "success") {
+    throw new ArcShieldError(
+      "TRANSACTION_REVERTED",
+      "The payment transaction was mined but reverted.",
+    );
+  }
+  return { hash, receipt };
+}
+
+async function preflightPayment(payment: ReturnType<typeof buildMemoPayment>) {
+  let accountCode: `0x${string}` | undefined;
+  try {
+    accountCode = await publicClient.getCode({ address: payment.account });
+  } catch (error) {
+    throw mapArcError(error, "RPC_FAILURE");
+  }
+  if (accountCode !== undefined && accountCode !== "0x") {
+    throw new ArcShieldError(
+      "UNSUPPORTED_ACCOUNT",
+      "Arc Memo payments require an externally owned wallet account; contract accounts are not supported.",
+    );
+  }
+
+  let balance: bigint;
+  try {
+    balance = await publicClient.readContract({
+      address: USDC_ADDRESS,
+      abi: usdcAbi,
+      functionName: "balanceOf",
+      args: [payment.account],
+    });
+  } catch (error) {
+    throw mapArcError(error, "RPC_FAILURE");
+  }
+
+  const transfer = decodeFunctionData({ abi: usdcAbi, data: payment.args[1] });
+  if (transfer.functionName !== "transfer") {
+    throw new ArcShieldError(
+      "SIMULATION_FAILURE",
+      "The payment transfer data is invalid and was not sent.",
+    );
+  }
+  if (balance < transfer.args[1]) {
+    throw new ArcShieldError(
+      "INSUFFICIENT_FUNDS",
+      "The wallet does not have enough USDC for this payment.",
+    );
   }
 }
 
@@ -303,6 +357,23 @@ function mapArcError(
     return new ArcShieldError(
       "WRONG_NETWORK",
       "Switch your wallet to Arc mainnet and try again.",
+      error,
+    );
+  }
+  if (
+    description.includes("rpcrequesterror") ||
+    description.includes("httprequesterror") ||
+    description.includes("providerrpcerror") ||
+    description.includes("websocketrequesterror") ||
+    description.includes("socketclosederror") ||
+    description.includes("timeout") ||
+    description.includes("network error") ||
+    description.includes("failed to fetch") ||
+    hasErrorCode(error, -32603)
+  ) {
+    return new ArcShieldError(
+      "RPC_FAILURE",
+      "The Arc network request failed. Try again shortly.",
       error,
     );
   }
