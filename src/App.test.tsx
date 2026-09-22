@@ -39,6 +39,13 @@ const secondAccount = "0x4444444444444444444444444444444444444444";
 const transactionHash = `0x${"ab".repeat(32)}` as const;
 const replacementHash = `0x${"cd".repeat(32)}` as const;
 
+type ProviderEvent = "chainChanged" | "accountsChanged";
+type ProviderListener = (value: string | string[]) => void;
+
+let providerListeners = new Map<ProviderEvent, Set<ProviderListener>>();
+const providerOn = vi.fn();
+const providerRemoveListener = vi.fn();
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   const promise = new Promise<T>((resolvePromise) => {
@@ -66,6 +73,12 @@ async function enterPayment({
   return user;
 }
 
+async function emitProviderEvent(event: ProviderEvent, value: string | string[]) {
+  await act(async () => {
+    providerListeners.get(event)?.forEach((listener) => listener(value));
+  });
+}
+
 beforeEach(() => {
   arc.inspectRecipient.mockReset().mockResolvedValue({ hasCode: false, denylisted: false });
   arc.connectWallet.mockReset().mockResolvedValue(account);
@@ -75,6 +88,27 @@ beforeEach(() => {
   arc.sendGuardedPayment.mockReset().mockResolvedValue({
     hash: transactionHash,
     receipt: { status: "success" },
+  });
+  providerListeners = new Map();
+  providerOn.mockReset().mockImplementation(
+    (event: ProviderEvent, listener: ProviderListener) => {
+      const listeners = providerListeners.get(event) ?? new Set<ProviderListener>();
+      listeners.add(listener);
+      providerListeners.set(event, listeners);
+    },
+  );
+  providerRemoveListener.mockReset().mockImplementation(
+    (event: ProviderEvent, listener: ProviderListener) => {
+      providerListeners.get(event)?.delete(listener);
+    },
+  );
+  Object.defineProperty(window, "ethereum", {
+    configurable: true,
+    value: {
+      request: vi.fn(),
+      on: providerOn,
+      removeListener: providerRemoveListener,
+    } as unknown as Window["ethereum"],
   });
 });
 
@@ -160,6 +194,51 @@ describe("App", () => {
       /Target network\s*Arc Mainnet \(5042\)/,
     );
     expect(arc.getWalletChainId).not.toHaveBeenCalled();
+  });
+
+  it("invalidates a verified header immediately when the provider chain changes", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Connect wallet" }));
+    expect(await screen.findByText("Arc Mainnet verified")).toBeInTheDocument();
+
+    await emitProviderEvent("chainChanged", "0x1");
+
+    expect(screen.getByText("Wrong network: chain ID 1").parentElement).toHaveClass(
+      "wrong-network",
+    );
+    expect(screen.queryByText("Arc Mainnet verified")).not.toBeInTheDocument();
+    expect(arc.switchToArc).not.toHaveBeenCalled();
+  });
+
+  it("updates and clears the connected account from provider events", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Connect wallet" }));
+
+    await emitProviderEvent("accountsChanged", [secondAccount]);
+    expect(
+      screen.getByRole("button", { name: `Connected wallet ${secondAccount}` }),
+    ).toHaveTextContent("0x4444...4444");
+
+    await emitProviderEvent("accountsChanged", []);
+    expect(screen.getByRole("button", { name: "Connect wallet" })).toBeInTheDocument();
+    expect(screen.getByText("Target network").parentElement).toHaveTextContent(
+      /Target network\s*Arc Mainnet \(5042\)/,
+    );
+  });
+
+  it("removes injected provider listeners on unmount", () => {
+    const { unmount } = render(<App />);
+    const chainListener = providerOn.mock.calls.find(([event]) => event === "chainChanged")?.[1];
+    const accountsListener = providerOn.mock.calls.find(
+      ([event]) => event === "accountsChanged",
+    )?.[1];
+
+    unmount();
+
+    expect(providerRemoveListener).toHaveBeenCalledWith("chainChanged", chainListener);
+    expect(providerRemoveListener).toHaveBeenCalledWith("accountsChanged", accountsListener);
   });
 
   it("renders ADDRESS_INVALID without offering payment review", async () => {
@@ -275,6 +354,36 @@ describe("App", () => {
       "button",
     );
   });
+
+  it.each([
+    {
+      chainId: ARC_CHAIN_ID,
+      statusText: "Arc Mainnet verified",
+      statusClass: "verified",
+    },
+    {
+      chainId: 1,
+      statusText: "Wrong network: chain ID 1",
+      statusClass: "wrong-network",
+    },
+  ])(
+    "synchronizes header chain $chainId when review connects the wallet",
+    async ({ chainId, statusText, statusClass }) => {
+      arc.getWalletChainId.mockResolvedValue(chainId);
+      render(<App />);
+      const user = await enterPayment();
+
+      await user.click(await screen.findByRole("button", { name: "Review payment" }));
+
+      expect(await screen.findByRole("dialog", { name: "Payment review" })).toHaveTextContent(
+        "Arc Mainnet (5042)",
+      );
+      expect(screen.getByText(statusText).parentElement).toHaveClass(statusClass);
+      expect(screen.getByRole("button", { name: `Connected wallet ${account}` })).toBeInTheDocument();
+      expect(arc.getWalletChainId).toHaveBeenCalledOnce();
+      expect(arc.switchToArc).not.toHaveBeenCalled();
+    },
+  );
 
   it("marks long amount values for wrapping in results and payment review", async () => {
     const longAmount = `${"1234567890".repeat(5)}.123456`;
@@ -510,6 +619,20 @@ describe("App", () => {
       expect.objectContaining({ account, recipient, amount: "1.25" }),
     );
     expect(arc.sendGuardedPayment).toHaveBeenCalledWith({ payment: true });
+  });
+
+  it("marks the header verified after confirmation switches to Arc Mainnet", async () => {
+    arc.getWalletChainId.mockResolvedValue(1);
+    render(<App />);
+    const user = await enterPayment();
+    await user.click(await screen.findByRole("button", { name: "Review payment" }));
+    expect(screen.getByText("Wrong network: chain ID 1")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Confirm in wallet" }));
+
+    await screen.findByRole("link", { name: /view transaction/i });
+    expect(screen.getByText("Arc Mainnet verified").parentElement).toHaveClass("verified");
+    expect(arc.switchToArc).toHaveBeenCalledOnce();
   });
 
   it("shows a locked pending state when broadcast receipt status is unknown", async () => {

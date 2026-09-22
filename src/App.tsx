@@ -72,6 +72,8 @@ export default function App() {
   const [walletConnecting, setWalletConnecting] = useState(false);
   const [walletError, setWalletError] = useState("");
   const requestVersion = useRef(0);
+  const walletStatusVersion = useRef(0);
+  const walletAccountRef = useRef<`0x${string}` | undefined>(undefined);
   const reviewButton = useRef<HTMLButtonElement>(null);
 
   const submitting = flow.stage === "submitting";
@@ -144,25 +146,41 @@ export default function App() {
     if (flow.stage !== "checking" && !paymentLocked) void runRiskCheck();
   };
 
+  const updateWalletAccount = (account: `0x${string}` | undefined) => {
+    walletAccountRef.current = account;
+    setWalletAccount(account);
+  };
+
+  const refreshHeaderNetwork = async () => {
+    const statusRequestId = ++walletStatusVersion.current;
+    try {
+      const chainId = await getWalletChainId();
+      if (statusRequestId !== walletStatusVersion.current) return;
+      setWalletNetwork(walletNetworkForChain(chainId));
+    } catch (error) {
+      if (statusRequestId !== walletStatusVersion.current) return;
+      setWalletNetwork({ status: "unverified" });
+      setWalletError(errorMessage(error));
+    }
+  };
+
+  const connectAndRefreshHeader = async () => {
+    const account = await connectWallet();
+    updateWalletAccount(account);
+    setWalletNetwork({ status: "unverified" });
+    setWalletError("");
+    await refreshHeaderNetwork();
+    return account;
+  };
+
   const connectHeaderWallet = async () => {
     setWalletConnecting(true);
-    setWalletAccount(undefined);
+    walletStatusVersion.current += 1;
+    updateWalletAccount(undefined);
     setWalletNetwork({ status: "target" });
     setWalletError("");
     try {
-      const account = await connectWallet();
-      setWalletAccount(account);
-      try {
-        const chainId = await getWalletChainId();
-        setWalletNetwork(
-          chainId === ARC_CHAIN_ID
-            ? { status: "verified" }
-            : { status: "wrong-network", chainId },
-        );
-      } catch (error) {
-        setWalletNetwork({ status: "unverified" });
-        setWalletError(errorMessage(error));
-      }
+      await connectAndRefreshHeader();
     } catch (error) {
       setWalletError(errorMessage(error));
     } finally {
@@ -181,9 +199,7 @@ export default function App() {
     const requestId = ++requestVersion.current;
     setFlow({ stage: "checking" });
     try {
-      const account = await connectWallet();
-      setWalletAccount(account);
-      setWalletError("");
+      const account = await connectAndRefreshHeader();
       if (requestId !== requestVersion.current) return;
       const report = analyzePayment({
         recipient: scanned.recipient,
@@ -221,6 +237,43 @@ export default function App() {
   };
 
   useEffect(() => {
+    const provider = window.ethereum;
+    if (!provider?.on || !provider.removeListener) return;
+
+    const handleChainChanged = (chainIdValue: string) => {
+      walletStatusVersion.current += 1;
+      setWalletError("");
+      if (!walletAccountRef.current) {
+        setWalletNetwork({ status: "target" });
+        return;
+      }
+      const chainId = parseWalletChainId(chainIdValue);
+      setWalletNetwork(
+        chainId === undefined ? { status: "unverified" } : walletNetworkForChain(chainId),
+      );
+    };
+    const handleAccountsChanged = (accounts: string[]) => {
+      walletStatusVersion.current += 1;
+      const wasConnected = walletAccountRef.current !== undefined;
+      const account = walletAddress(accounts[0]);
+      updateWalletAccount(account);
+      setWalletError("");
+      if (!account) {
+        setWalletNetwork({ status: "target" });
+      } else if (!wasConnected) {
+        setWalletNetwork({ status: "unverified" });
+      }
+    };
+
+    provider.on("chainChanged", handleChainChanged);
+    provider.on("accountsChanged", handleAccountsChanged);
+    return () => {
+      provider.removeListener?.("chainChanged", handleChainChanged);
+      provider.removeListener?.("accountsChanged", handleAccountsChanged);
+    };
+  }, []);
+
+  useEffect(() => {
     if (flow.stage !== "review" || flow.dialog !== "open") return;
     const reviewed = flow.payment;
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
@@ -236,7 +289,7 @@ export default function App() {
     setFlow({ stage: "submitting", payment: reviewed });
     try {
       const account = await connectWallet();
-      setWalletAccount(account);
+      updateWalletAccount(account);
       setWalletError("");
       if (account.toLowerCase() !== reviewed.account.toLowerCase()) {
         setRiskAccepted(false);
@@ -261,6 +314,8 @@ export default function App() {
 
       setFlow({ stage: "submitting", payment: revalidated });
       await switchToArc();
+      walletStatusVersion.current += 1;
+      setWalletNetwork({ status: "verified" });
       const paymentRequest = buildMemoPayment({
         account: revalidated.account,
         recipient: revalidated.recipient,
@@ -768,6 +823,22 @@ function errorMessage(error: unknown): string {
 
 function shortenAddress(account: `0x${string}`): string {
   return `${account.slice(0, 6)}...${account.slice(-4)}`;
+}
+
+function walletNetworkForChain(chainId: number): WalletNetworkState {
+  return chainId === ARC_CHAIN_ID
+    ? { status: "verified" }
+    : { status: "wrong-network", chainId };
+}
+
+function parseWalletChainId(value: string): number | undefined {
+  if (!/^(?:0x[\da-f]+|\d+)$/i.test(value)) return undefined;
+  const chainId = Number(BigInt(value));
+  return Number.isSafeInteger(chainId) ? chainId : undefined;
+}
+
+function walletAddress(value: string | undefined): `0x${string}` | undefined {
+  return value && /^0x[\da-f]{40}$/i.test(value) ? (value as `0x${string}`) : undefined;
 }
 
 const BROADCAST_STATUS = {
