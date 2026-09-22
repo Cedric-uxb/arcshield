@@ -47,6 +47,7 @@ import {
   USDC_ADDRESS,
   buildMemoPayment,
   connectWallet,
+  getWalletChainId,
   inspectRecipient,
   sendGuardedPayment,
   switchToArc,
@@ -79,6 +80,7 @@ const input = {
 } as const;
 
 const transactionHash = `0x${"ab".repeat(32)}` as const;
+const replacementHash = `0x${"cd".repeat(32)}` as const;
 
 beforeEach(() => {
   clients.providerRequest.mockReset().mockResolvedValue(null);
@@ -207,6 +209,34 @@ describe("Arc reads and wallet operations", () => {
     );
 
     await expect(connectWallet()).rejects.toMatchObject({ code: "USER_REJECTED" });
+  });
+
+  it("reads the injected wallet chain id without connecting or switching", async () => {
+    clients.providerRequest.mockResolvedValue("0x13b2");
+
+    await expect(getWalletChainId()).resolves.toBe(5042);
+    expect(clients.providerRequest).toHaveBeenCalledOnce();
+    expect(clients.providerRequest).toHaveBeenCalledWith({ method: "eth_chainId" });
+    expect(clients.walletClient.requestAddresses).not.toHaveBeenCalled();
+  });
+
+  it("maps a wallet chain id provider failure to RPC_FAILURE", async () => {
+    clients.providerRequest.mockRejectedValue(
+      new RpcRequestError({
+        body: { method: "eth_chainId", params: [] },
+        error: { code: -32603, message: "RPC unavailable" },
+        url: ARC_RPC_URL,
+      }),
+    );
+
+    await expect(getWalletChainId()).rejects.toMatchObject({ code: "RPC_FAILURE" });
+    expect(clients.walletClient.requestAddresses).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed wallet chain id instead of partially parsing it", async () => {
+    clients.providerRequest.mockResolvedValue("0x13b2oops");
+
+    await expect(getWalletChainId()).rejects.toMatchObject({ code: "RPC_FAILURE" });
   });
 
   it("adds Arc with the official config after switch returns 4902", async () => {
@@ -403,6 +433,58 @@ describe("Arc reads and wallet operations", () => {
       message: expect.stringMatching(/do not resubmit.*checked/i),
     });
   });
+
+  it("accepts a repriced transaction and returns its actual receipt hash", async () => {
+    const replacementReceipt = { status: "success", transactionHash: replacementHash };
+    clients.publicClient.waitForTransactionReceipt.mockImplementation(
+      async ({ onReplaced }) => {
+        onReplaced({
+          reason: "repriced",
+          replacedTransaction: { hash: transactionHash },
+          transaction: { hash: replacementHash },
+          transactionReceipt: replacementReceipt,
+        });
+        return replacementReceipt;
+      },
+    );
+
+    await expect(sendGuardedPayment(buildMemoPayment(input))).resolves.toEqual({
+      hash: replacementHash,
+      receipt: replacementReceipt,
+    });
+    expect(clients.publicClient.waitForTransactionReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({ hash: transactionHash, onReplaced: expect.any(Function) }),
+    );
+  });
+
+  it.each([
+    ["replaced", "TRANSACTION_REPLACED"],
+    ["cancelled", "TRANSACTION_CANCELLED"],
+  ] as const)(
+    "rejects a %s transaction with its replacement hash",
+    async (reason, code) => {
+      const replacementReceipt = { status: "success", transactionHash: replacementHash };
+      clients.publicClient.waitForTransactionReceipt.mockImplementation(
+        async ({ onReplaced }) => {
+          onReplaced({
+            reason,
+            replacedTransaction: { hash: transactionHash },
+            transaction: { hash: replacementHash },
+            transactionReceipt: replacementReceipt,
+          });
+          return replacementReceipt;
+        },
+      );
+
+      await expect(
+        sendGuardedPayment(buildMemoPayment(input)),
+      ).rejects.toMatchObject({
+        code,
+        transactionHash: replacementHash,
+        message: expect.stringMatching(/inspect.*before retrying/i),
+      });
+    },
+  );
 
   it("maps a reverted mined receipt to TRANSACTION_REVERTED", async () => {
     clients.publicClient.waitForTransactionReceipt.mockResolvedValue({

@@ -58,6 +58,8 @@ export type ArcShieldErrorCode =
   | "SIMULATION_FAILURE"
   | "CONTRACT_REVERTED"
   | "RPC_FAILURE"
+  | "TRANSACTION_CANCELLED"
+  | "TRANSACTION_REPLACED"
   | "TRANSACTION_STATUS_UNKNOWN"
   | "TRANSACTION_REVERTED"
   | "UNSUPPORTED_ACCOUNT";
@@ -193,6 +195,23 @@ export async function connectWallet(): Promise<Address> {
   }
 }
 
+export async function getWalletChainId(): Promise<number> {
+  const provider = getInjectedProvider();
+  try {
+    const chainId = await provider.request({ method: "eth_chainId" });
+    if (typeof chainId !== "string" || !/^0x[0-9a-f]+$/i.test(chainId)) {
+      throw new Error("The wallet returned an invalid chain id.");
+    }
+    const parsedChainId = Number.parseInt(chainId, 16);
+    if (!Number.isSafeInteger(parsedChainId)) {
+      throw new Error("The wallet returned an invalid chain id.");
+    }
+    return parsedChainId;
+  } catch (error) {
+    throw mapArcError(error, "RPC_FAILURE");
+  }
+}
+
 export async function switchToArc(): Promise<void> {
   const provider = getInjectedProvider();
   try {
@@ -240,9 +259,20 @@ export async function sendGuardedPayment(payment: ReturnType<typeof buildMemoPay
     throw mapArcError(error, "RPC_FAILURE");
   }
 
+  let replacement:
+    | {
+        reason: "cancelled" | "replaced" | "repriced";
+        hash: `0x${string}`;
+      }
+    | undefined;
   let receipt: Awaited<ReturnType<typeof publicClient.waitForTransactionReceipt>>;
   try {
-    receipt = await publicClient.waitForTransactionReceipt({ hash });
+    receipt = await publicClient.waitForTransactionReceipt({
+      hash,
+      onReplaced: ({ reason, transactionReceipt }) => {
+        replacement = { reason, hash: transactionReceipt.transactionHash };
+      },
+    });
   } catch (error) {
     throw new ArcShieldError(
       "TRANSACTION_STATUS_UNKNOWN",
@@ -251,15 +281,32 @@ export async function sendGuardedPayment(payment: ReturnType<typeof buildMemoPay
       hash,
     );
   }
+  const finalHash = receipt.transactionHash;
+  if (replacement?.reason === "replaced") {
+    throw new ArcShieldError(
+      "TRANSACTION_REPLACED",
+      "The Arc payment was replaced by a different transaction. Inspect the replacement transaction before retrying.",
+      undefined,
+      replacement.hash,
+    );
+  }
+  if (replacement?.reason === "cancelled") {
+    throw new ArcShieldError(
+      "TRANSACTION_CANCELLED",
+      "The Arc payment was cancelled by a replacement transaction. Inspect the cancellation transaction before retrying.",
+      undefined,
+      replacement.hash,
+    );
+  }
   if (receipt.status !== "success") {
     throw new ArcShieldError(
       "TRANSACTION_REVERTED",
       "The payment transaction was mined but reverted.",
       undefined,
-      hash,
+      finalHash,
     );
   }
-  return { hash, receipt };
+  return { hash: finalHash, receipt };
 }
 
 async function preflightPayment(payment: ReturnType<typeof buildMemoPayment>) {
