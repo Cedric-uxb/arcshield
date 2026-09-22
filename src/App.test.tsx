@@ -98,6 +98,10 @@ describe("App", () => {
     await enterPayment({ website: "http://example.com" });
 
     expect(await screen.findByText("ADDRESS_CONTRACT")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Risk result" })).toHaveAttribute(
+      "aria-live",
+      "polite",
+    );
     expect(screen.getByText("URL_NO_HTTPS")).toBeInTheDocument();
   });
 
@@ -168,6 +172,11 @@ describe("App", () => {
     await user.click(await screen.findByRole("button", { name: "Review payment" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Payment review" });
+    expect(dialog).toHaveAttribute("aria-labelledby", "payment-review-title");
+    expect(screen.getByRole("heading", { name: "Payment review" })).toHaveAttribute(
+      "id",
+      "payment-review-title",
+    );
     expect(dialog).toHaveTextContent("Arc Mainnet (5042)");
     expect(dialog).toHaveTextContent("0x52908400098527886E0F7030069857D2E4169EE7");
     expect(dialog).toHaveTextContent(account);
@@ -189,7 +198,7 @@ describe("App", () => {
 
     await user.click(await screen.findByRole("button", { name: "Review payment" }));
 
-    expect(await screen.findByText("You rejected the wallet request")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("You rejected the wallet request");
     expect(screen.queryByRole("link", { name: /view transaction/i })).not.toBeInTheDocument();
   });
 

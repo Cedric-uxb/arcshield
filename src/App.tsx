@@ -1,4 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  CircleCheck,
+  ExternalLink,
+  LoaderCircle,
+  Search,
+  ShieldCheck,
+  TriangleAlert,
+  Wallet,
+} from "lucide-react";
 import { analyzePayment, type RiskReport } from "./core/risk";
 import {
   ARC_EXPLORER_URL,
@@ -208,124 +217,215 @@ export default function App() {
     }
   };
 
+  const RiskIcon = payment?.report.level === "low" ? CircleCheck : TriangleAlert;
+
   return (
     <>
-      <header>
-        <strong>ArcShield</strong>
-        <span>Arc Mainnet (5042)</span>
+      <header className="app-header">
+        <div className="brand">
+          <ShieldCheck aria-hidden="true" size={22} />
+          <strong>ArcShield</strong>
+        </div>
+        <span className="network-status">
+          <CircleCheck aria-hidden="true" size={16} />
+          Arc Mainnet (5042)
+        </span>
       </header>
 
-      <main>
-        <h1>Check before you pay</h1>
-        <form noValidate onSubmit={submitRiskCheck}>
-          <label>
-            Recipient address
-            <input
-              name="recipient"
-              autoComplete="off"
-              value={recipient}
-              disabled={modalOpen}
-              onChange={(event) => {
-                if (modalOpen) return;
-                setRecipient(event.target.value);
-                invalidateReport();
-              }}
-            />
-          </label>
+      <main className="app-shell">
+        <div className="page-heading">
+          <h1>Check before you pay</h1>
+        </div>
 
-          <label>
-            Amount in USDC
-            <input
-              name="amount"
-              inputMode="decimal"
-              value={amount}
-              disabled={modalOpen}
-              onChange={(event) => {
-                if (modalOpen) return;
-                setAmount(event.target.value);
-                invalidateReport();
-              }}
-            />
-          </label>
+        <div className="workspace-grid">
+          <section className="panel form-panel" aria-labelledby="payment-details-title">
+            <div className="panel-heading">
+              <span className="icon-box neutral">
+                <Wallet aria-hidden="true" size={20} />
+              </span>
+              <h2 id="payment-details-title">Payment details</h2>
+            </div>
 
-          <label>
-            Associated website (optional)
-            <input
-              name="website"
-              type="url"
-              value={website}
-              disabled={modalOpen}
-              onChange={(event) => {
-                if (modalOpen) return;
-                setWebsite(event.target.value);
-                invalidateReport();
-              }}
-            />
-          </label>
+            <form noValidate onSubmit={submitRiskCheck}>
+              <label>
+                Recipient address
+                <input
+                  name="recipient"
+                  autoComplete="off"
+                  value={recipient}
+                  disabled={modalOpen}
+                  onChange={(event) => {
+                    if (modalOpen) return;
+                    setRecipient(event.target.value);
+                    invalidateReport();
+                  }}
+                />
+              </label>
 
-          <button
-            type="submit"
-            disabled={flow.stage === "checking" || modalOpen}
-          >
-            {flow.stage === "checking" ? "Checking..." : "Run risk check"}
-          </button>
-        </form>
+              <label>
+                Amount in USDC
+                <input
+                  name="amount"
+                  inputMode="decimal"
+                  value={amount}
+                  disabled={modalOpen}
+                  onChange={(event) => {
+                    if (modalOpen) return;
+                    setAmount(event.target.value);
+                    invalidateReport();
+                  }}
+                />
+              </label>
 
-        {payment && (
-          <section aria-label="Risk result">
-            <h2>Risk result</h2>
-            <p>Network: Arc Mainnet (5042)</p>
-            <p>Recipient: {payment.report.normalizedRecipient ?? payment.recipient}</p>
-            <p>Amount: {payment.amount} USDC</p>
-            <p>Risk level: {payment.report.level}</p>
-            <ul>
-              {payment.report.codes.map((code) => (
-                <li key={code}>{code}</li>
-              ))}
-            </ul>
-            <p>ArcShield provides risk indicators, not a safety guarantee.</p>
+              <label>
+                Associated website (optional)
+                <input
+                  name="website"
+                  type="url"
+                  value={website}
+                  disabled={modalOpen}
+                  onChange={(event) => {
+                    if (modalOpen) return;
+                    setWebsite(event.target.value);
+                    invalidateReport();
+                  }}
+                />
+              </label>
 
-            {payment.report.level === "high" &&
-              payment.report.normalizedRecipient &&
-              flow.stage === "review" &&
-              flow.dialog === "closed" && (
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={riskAccepted}
-                    onChange={(event) => setRiskAccepted(event.target.checked)}
-                  />
-                  I understand the risk
-                </label>
-              )}
-
-            {payment.report.normalizedRecipient &&
-              flow.stage === "review" &&
-              flow.dialog === "closed" && (
-                <button
-                  ref={reviewButton}
-                  type="button"
-                  disabled={payment.report.level === "high" && !riskAccepted}
-                  onClick={() => openPaymentReview(payment)}
-                >
-                  Review payment
-                </button>
-              )}
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={flow.stage === "checking" || modalOpen}
+              >
+                {flow.stage === "checking" ? (
+                  <LoaderCircle className="spinner" aria-hidden="true" size={18} />
+                ) : (
+                  <Search aria-hidden="true" size={18} />
+                )}
+                {flow.stage === "checking" ? "Checking..." : "Run risk check"}
+              </button>
+            </form>
           </section>
-        )}
 
-        {flow.stage === "error" && <p role="alert">{flow.message}</p>}
+          <div className="result-column">
+            {payment ? (
+              <section
+                className={`panel risk-panel risk-${payment.report.level}`}
+                aria-label="Risk result"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                <div className="risk-heading">
+                  <span className="icon-box">
+                    <RiskIcon aria-hidden="true" size={20} />
+                  </span>
+                  <div>
+                    <h2>Risk result</h2>
+                    <span className="risk-badge">{payment.report.level}</span>
+                  </div>
+                </div>
 
-        {flow.stage === "review" && flow.dialog === "closed" && flow.message && (
-          <p role="alert">{flow.message}</p>
-        )}
+                <dl className="detail-list">
+                  <div>
+                    <dt>Network</dt>
+                    <dd>Arc Mainnet (5042)</dd>
+                  </div>
+                  <div>
+                    <dt>Recipient</dt>
+                    <dd className="code-value">
+                      {payment.report.normalizedRecipient ?? payment.recipient}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Amount</dt>
+                    <dd>{payment.amount} USDC</dd>
+                  </div>
+                </dl>
 
-        {flow.stage === "success" && (
-          <p>
-            Payment confirmed.{" "}
-            <a href={`${ARC_EXPLORER_URL}/tx/${flow.hash}`}>View transaction</a>
-          </p>
-        )}
+                <div className="reason-block">
+                  <h3>Reason codes</h3>
+                  {payment.report.codes.length > 0 ? (
+                    <ul className="code-list">
+                      {payment.report.codes.map((code) => (
+                        <li key={code}>{code}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">None</p>
+                  )}
+                </div>
+
+                <p className="disclaimer">
+                  ArcShield provides risk indicators, not a safety guarantee.
+                </p>
+
+                {payment.report.level === "high" &&
+                  payment.report.normalizedRecipient &&
+                  flow.stage === "review" &&
+                  flow.dialog === "closed" && (
+                    <label className="risk-override">
+                      <input
+                        type="checkbox"
+                        checked={riskAccepted}
+                        onChange={(event) => setRiskAccepted(event.target.checked)}
+                      />
+                      I understand the risk
+                    </label>
+                  )}
+
+                {payment.report.normalizedRecipient &&
+                  flow.stage === "review" &&
+                  flow.dialog === "closed" && (
+                    <button
+                      className="primary-button"
+                      ref={reviewButton}
+                      type="button"
+                      disabled={payment.report.level === "high" && !riskAccepted}
+                      onClick={() => openPaymentReview(payment)}
+                    >
+                      <Wallet aria-hidden="true" size={18} />
+                      Review payment
+                    </button>
+                  )}
+              </section>
+            ) : flow.stage === "error" ? (
+              <div className="status-message error" role="alert">
+                <TriangleAlert aria-hidden="true" size={20} />
+                <p>{flow.message}</p>
+              </div>
+            ) : (
+              <section className="panel empty-result" aria-labelledby="risk-result-title">
+                <span className="icon-box neutral">
+                  <ShieldCheck aria-hidden="true" size={20} />
+                </span>
+                <div>
+                  <h2 id="risk-result-title">Risk result</h2>
+                  <p>Not checked</p>
+                </div>
+              </section>
+            )}
+
+            {flow.stage === "review" && flow.dialog === "closed" && flow.message && (
+              <div className="status-message warning" role="alert">
+                <TriangleAlert aria-hidden="true" size={20} />
+                <p>{flow.message}</p>
+              </div>
+            )}
+
+            {flow.stage === "success" && (
+              <div className="status-message success">
+                <CircleCheck aria-hidden="true" size={20} />
+                <p>
+                  Payment confirmed. {" "}
+                  <a href={`${ARC_EXPLORER_URL}/tx/${flow.hash}`}>
+                    View transaction
+                    <ExternalLink aria-hidden="true" size={15} />
+                  </a>
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
 
         {flow.stage === "review" && flow.dialog === "open" && (
           <PaymentDialog
@@ -356,25 +456,79 @@ function PaymentDialog({
   onConfirm?: () => void;
 }) {
   return (
-    <section role="dialog" aria-modal="true" aria-label="Payment review">
-      <h2>Payment review</h2>
-      <p>Network: Arc Mainnet (5042)</p>
-      <p>Sender: {payment.account}</p>
-      <p>Recipient: {payment.recipient}</p>
-      <p>Amount: {payment.amount} USDC</p>
-      <p>Risk level: {payment.report.level}</p>
-      <p>
-        Reason codes: {payment.report.codes.length > 0 ? payment.report.codes.join(", ") : "None"}
-      </p>
-      <p>ArcShield provides risk indicators, not a safety guarantee.</p>
-      <button type="button" autoFocus disabled={submitting} onClick={onCancel}>
-        Cancel
-      </button>
-      <button type="button" disabled={submitting} onClick={onConfirm}>
-        Confirm in wallet
-      </button>
-      {submitting && <p role="status">Submitting payment...</p>}
-    </section>
+    <div className="dialog-backdrop">
+      <section
+        className="payment-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="payment-review-title"
+      >
+        <div className="dialog-heading">
+          <span className="icon-box neutral">
+            <Wallet aria-hidden="true" size={20} />
+          </span>
+          <div>
+            <h2 id="payment-review-title">Payment review</h2>
+            <p>Arc Mainnet (5042)</p>
+          </div>
+        </div>
+
+        <dl className="detail-list dialog-details">
+          <div>
+            <dt>Sender</dt>
+            <dd className="code-value">{payment.account}</dd>
+          </div>
+          <div>
+            <dt>Recipient</dt>
+            <dd className="code-value">{payment.recipient}</dd>
+          </div>
+          <div>
+            <dt>Amount</dt>
+            <dd>{payment.amount} USDC</dd>
+          </div>
+          <div>
+            <dt>Risk level</dt>
+            <dd>{payment.report.level}</dd>
+          </div>
+          <div>
+            <dt>Reason codes</dt>
+            <dd className="code-value">
+              {payment.report.codes.length > 0 ? payment.report.codes.join(", ") : "None"}
+            </dd>
+          </div>
+        </dl>
+
+        <p className="disclaimer">ArcShield provides risk indicators, not a safety guarantee.</p>
+
+        {submitting && (
+          <p className="submitting-status" role="status">
+            <LoaderCircle className="spinner" aria-hidden="true" size={18} />
+            Submitting payment...
+          </p>
+        )}
+
+        <div className="dialog-actions">
+          <button
+            className="secondary-button"
+            type="button"
+            autoFocus
+            disabled={submitting}
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+          <button
+            className="primary-button"
+            type="button"
+            disabled={submitting}
+            onClick={onConfirm}
+          >
+            <Wallet aria-hidden="true" size={18} />
+            Confirm in wallet
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
