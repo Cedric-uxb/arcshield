@@ -56,17 +56,26 @@ export type ArcShieldErrorCode =
   | "WRONG_NETWORK"
   | "INSUFFICIENT_FUNDS"
   | "SIMULATION_FAILURE"
+  | "CONTRACT_REVERTED"
   | "RPC_FAILURE"
+  | "TRANSACTION_STATUS_UNKNOWN"
   | "TRANSACTION_REVERTED"
   | "UNSUPPORTED_ACCOUNT";
 
 export class ArcShieldError extends Error {
   readonly code: ArcShieldErrorCode;
+  readonly transactionHash?: `0x${string}`;
 
-  constructor(code: ArcShieldErrorCode, message: string, cause?: unknown) {
+  constructor(
+    code: ArcShieldErrorCode,
+    message: string,
+    cause?: unknown,
+    transactionHash?: `0x${string}`,
+  ) {
     super(message, { cause });
     this.name = "ArcShieldError";
     this.code = code;
+    if (transactionHash) this.transactionHash = transactionHash;
   }
 }
 
@@ -107,17 +116,24 @@ export function buildMemoPayment({
   report,
   operationId,
 }: BuildMemoPaymentInput) {
-  const fractionalDigits = amount.trim().match(/^[+-]?\d*\.(\d+)$/)?.[1];
+  const normalizedAmount = amount.trim();
+  const fractionalDigits = normalizedAmount.match(/^\d+\.(\d+)$/)?.[1];
   if (fractionalDigits && fractionalDigits.length > 6) {
     throw new ArcShieldError(
       "INVALID_AMOUNT",
       "USDC amounts can have at most six decimal places.",
     );
   }
+  if (!/^\d+(?:\.\d{1,6})?$/.test(normalizedAmount)) {
+    throw new ArcShieldError(
+      "INVALID_AMOUNT",
+      "Enter a valid USDC amount greater than zero.",
+    );
+  }
 
   let units: bigint;
   try {
-    units = parseUnits(amount, 6);
+    units = parseUnits(normalizedAmount, 6);
   } catch (error) {
     throw new ArcShieldError(
       "INVALID_AMOUNT",
@@ -228,12 +244,19 @@ export async function sendGuardedPayment(payment: ReturnType<typeof buildMemoPay
   try {
     receipt = await publicClient.waitForTransactionReceipt({ hash });
   } catch (error) {
-    throw mapArcError(error, "RPC_FAILURE");
+    throw new ArcShieldError(
+      "TRANSACTION_STATUS_UNKNOWN",
+      "The payment was broadcast, but its final status could not be confirmed. Do not resubmit until the transaction hash has been checked in the Arc explorer.",
+      error,
+      hash,
+    );
   }
   if (receipt.status !== "success") {
     throw new ArcShieldError(
       "TRANSACTION_REVERTED",
       "The payment transaction was mined but reverted.",
+      undefined,
+      hash,
     );
   }
   return { hash, receipt };
@@ -361,9 +384,15 @@ function mapArcError(
     );
   }
   if (
-    fallback === "SIMULATION_FAILURE" &&
     description.includes("contractfunctionrevertederror")
   ) {
+    if (fallback !== "SIMULATION_FAILURE") {
+      return new ArcShieldError(
+        "CONTRACT_REVERTED",
+        "The payment contract call reverted and no transaction hash was returned.",
+        error,
+      );
+    }
     return new ArcShieldError(
       "SIMULATION_FAILURE",
       "The payment could not be simulated safely and was not sent.",

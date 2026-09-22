@@ -2,6 +2,7 @@ import {
   ContractFunctionExecutionError,
   ContractFunctionRevertedError,
   RpcRequestError,
+  WaitForTransactionReceiptTimeoutError,
   decodeFunctionData,
   encodeFunctionData,
   hexToString,
@@ -150,11 +151,15 @@ describe("buildMemoPayment", () => {
     expect(() => buildMemoPayment({ ...input, amount })).toThrow(/greater than zero/i);
   });
 
+  it.each([".1", "1.", "1e3"])("rejects non-plain decimal amount %s", (amount) => {
+    expect(() => buildMemoPayment({ ...input, amount })).toThrow(/valid USDC amount/i);
+  });
+
   it("accepts an amount with exactly six decimal places", () => {
-    const payment = buildMemoPayment({ ...input, amount: "0.000001" });
+    const payment = buildMemoPayment({ ...input, amount: "123456789.123456" });
     const transfer = decodeFunctionData({ abi: usdcAbi, data: payment.args[1] });
 
-    expect(transfer.args).toEqual([recipient, 1n]);
+    expect(transfer.args).toEqual([recipient, 123_456_789_123_456n]);
   });
 
   it.each(["0.0000005", "1.0000005"])(
@@ -324,6 +329,81 @@ describe("Arc reads and wallet operations", () => {
     ).rejects.toMatchObject({ code: "SIMULATION_FAILURE" });
   });
 
+  it("classifies a nested writeContract revert as CONTRACT_REVERTED", async () => {
+    const payment = buildMemoPayment(input);
+    const rpcCause = new RpcRequestError({
+      body: { method: "eth_sendTransaction", params: [] },
+      error: { code: -32603, message: "execution reverted" },
+      url: ARC_RPC_URL,
+    });
+    const revertCause = new ContractFunctionRevertedError({
+      abi: memoAbi,
+      functionName: "memo",
+      message: "execution reverted",
+      cause: rpcCause,
+    });
+    const writeError = new ContractFunctionExecutionError(revertCause, {
+      abi: memoAbi,
+      args: [...payment.args],
+      contractAddress: MEMO_ADDRESS,
+      functionName: "memo",
+      sender: account,
+    });
+    clients.walletClient.writeContract.mockRejectedValue(writeError);
+
+    await expect(sendGuardedPayment(payment)).rejects.toMatchObject({
+      code: "CONTRACT_REVERTED",
+    });
+    expect(clients.publicClient.waitForTransactionReceipt).not.toHaveBeenCalled();
+  });
+
+  it("keeps a genuine writeContract provider failure as RPC_FAILURE", async () => {
+    clients.walletClient.writeContract.mockRejectedValue(
+      new RpcRequestError({
+        body: { method: "eth_sendTransaction", params: [] },
+        error: { code: -32603, message: "RPC unavailable" },
+        url: ARC_RPC_URL,
+      }),
+    );
+
+    await expect(
+      sendGuardedPayment(buildMemoPayment(input)),
+    ).rejects.toMatchObject({ code: "RPC_FAILURE" });
+    expect(clients.publicClient.waitForTransactionReceipt).not.toHaveBeenCalled();
+  });
+
+  it("preserves the hash when the receipt RPC fails after broadcast", async () => {
+    clients.publicClient.waitForTransactionReceipt.mockRejectedValue(
+      new RpcRequestError({
+        body: { method: "eth_getTransactionReceipt", params: [transactionHash] },
+        error: { code: -32603, message: "RPC unavailable" },
+        url: ARC_RPC_URL,
+      }),
+    );
+
+    await expect(
+      sendGuardedPayment(buildMemoPayment(input)),
+    ).rejects.toMatchObject({
+      code: "TRANSACTION_STATUS_UNKNOWN",
+      transactionHash,
+      message: expect.stringMatching(/do not resubmit.*checked/i),
+    });
+  });
+
+  it("preserves the hash when receipt confirmation times out", async () => {
+    clients.publicClient.waitForTransactionReceipt.mockRejectedValue(
+      new WaitForTransactionReceiptTimeoutError({ hash: transactionHash }),
+    );
+
+    await expect(
+      sendGuardedPayment(buildMemoPayment(input)),
+    ).rejects.toMatchObject({
+      code: "TRANSACTION_STATUS_UNKNOWN",
+      transactionHash,
+      message: expect.stringMatching(/do not resubmit.*checked/i),
+    });
+  });
+
   it("maps a reverted mined receipt to TRANSACTION_REVERTED", async () => {
     clients.publicClient.waitForTransactionReceipt.mockResolvedValue({
       status: "reverted",
@@ -332,7 +412,7 @@ describe("Arc reads and wallet operations", () => {
 
     await expect(
       sendGuardedPayment(buildMemoPayment(input)),
-    ).rejects.toMatchObject({ code: "TRANSACTION_REVERTED" });
+    ).rejects.toMatchObject({ code: "TRANSACTION_REVERTED", transactionHash });
   });
 
   it("rejects contract accounts before simulation", async () => {
