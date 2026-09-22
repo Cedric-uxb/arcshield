@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ArcShieldError } from "./lib/arc";
@@ -99,6 +99,14 @@ describe("App", () => {
 
     expect(await screen.findByText("ADDRESS_CONTRACT")).toBeInTheDocument();
     expect(screen.getByText("URL_NO_HTTPS")).toBeInTheDocument();
+  });
+
+  it("submits a malformed website for explicit URL_INVALID analysis", async () => {
+    render(<App />);
+
+    await enterPayment({ website: "not a url" });
+
+    expect(await screen.findByText("URL_INVALID")).toBeInTheDocument();
   });
 
   it("requires an explicit override before reviewing a high-risk payment", async () => {
@@ -217,6 +225,43 @@ describe("App", () => {
     expect(arc.connectWallet).toHaveBeenCalledTimes(2);
   });
 
+  it("requires a fresh review if the wallet account changes at confirmation", async () => {
+    arc.connectWallet.mockResolvedValueOnce(account).mockResolvedValueOnce(secondAccount);
+    render(<App />);
+    const user = await enterPayment();
+    await user.click(await screen.findByRole("button", { name: "Review payment" }));
+
+    await user.click(screen.getByRole("button", { name: "Confirm in wallet" }));
+
+    expect(
+      await screen.findByText("Wallet account changed. Review the payment again."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Review payment" })).toBeInTheDocument();
+    expect(arc.switchToArc).not.toHaveBeenCalled();
+    expect(arc.sendGuardedPayment).not.toHaveBeenCalled();
+  });
+
+  it("requires a fresh override when recipient risk changes at confirmation", async () => {
+    arc.inspectRecipient
+      .mockResolvedValueOnce({ hasCode: false, denylisted: false })
+      .mockResolvedValueOnce({ hasCode: true, denylisted: true });
+    render(<App />);
+    const user = await enterPayment();
+    await user.click(await screen.findByRole("button", { name: "Review payment" }));
+
+    await user.click(screen.getByRole("button", { name: "Confirm in wallet" }));
+
+    expect(
+      await screen.findByText("Risk indicators changed. Review the payment again."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("ADDRESS_CONTRACT")).toBeInTheDocument();
+    expect(screen.getByText("ADDRESS_DENYLISTED")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "I understand the risk" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Review payment" })).toBeDisabled();
+    expect(arc.switchToArc).not.toHaveBeenCalled();
+    expect(arc.sendGuardedPayment).not.toHaveBeenCalled();
+  });
+
   it("runs the risk check when Enter submits the form", async () => {
     render(<App />);
     const user = userEvent.setup();
@@ -243,6 +288,30 @@ describe("App", () => {
     await user.click(cancel);
     expect(screen.queryByRole("dialog", { name: "Payment review" })).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "Review payment" })).toHaveFocus());
+  });
+
+  it("keeps background controls disabled and only lets Escape close review", async () => {
+    const switching = deferred<void>();
+    arc.switchToArc.mockReturnValue(switching.promise);
+    render(<App />);
+    const user = await enterPayment();
+    await user.click(await screen.findByRole("button", { name: "Review payment" }));
+
+    expect(screen.getByLabelText("Recipient address")).toBeDisabled();
+    expect(screen.getByLabelText("Amount in USDC")).toBeDisabled();
+    expect(screen.getByLabelText("Associated website (optional)")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Run risk check" })).toBeDisabled();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Payment review" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Review payment" }));
+    await user.click(screen.getByRole("button", { name: "Confirm in wallet" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Payment review" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Submitting payment");
+
+    await act(async () => switching.resolve());
+    expect(await screen.findByRole("link", { name: /view transaction/i })).toBeInTheDocument();
   });
 
   it("keeps the reviewed payment visible and immutable while submitting", async () => {
@@ -291,5 +360,20 @@ describe("App", () => {
       expect.objectContaining({ account, recipient, amount: "1.25" }),
     );
     expect(arc.sendGuardedPayment).toHaveBeenCalledWith({ payment: true });
+  });
+
+  it("shows a friendly error when wallet confirmation is rejected", async () => {
+    arc.switchToArc.mockRejectedValue(
+      new ArcShieldError("USER_REJECTED", "The wallet request was cancelled."),
+    );
+    render(<App />);
+    const user = await enterPayment();
+    await user.click(await screen.findByRole("button", { name: "Review payment" }));
+
+    await user.click(screen.getByRole("button", { name: "Confirm in wallet" }));
+
+    expect(await screen.findByText("You rejected the wallet request")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /view transaction/i })).not.toBeInTheDocument();
+    expect(arc.sendGuardedPayment).not.toHaveBeenCalled();
   });
 });
