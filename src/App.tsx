@@ -227,8 +227,8 @@ export default function App() {
           <strong>ArcShield</strong>
         </div>
         <span className="network-status">
-          <CircleCheck aria-hidden="true" size={16} />
-          Arc Mainnet (5042)
+          <span className="network-label">Target network</span>
+          <span>Arc Mainnet (5042)</span>
         </span>
       </header>
 
@@ -338,7 +338,7 @@ export default function App() {
                   </div>
                   <div>
                     <dt>Amount</dt>
-                    <dd>{payment.amount} USDC</dd>
+                    <dd className="code-value">{payment.amount} USDC</dd>
                   </div>
                 </dl>
 
@@ -413,7 +413,12 @@ export default function App() {
             )}
 
             {flow.stage === "success" && (
-              <div className="status-message success">
+              <div
+                className="status-message success"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
                 <CircleCheck aria-hidden="true" size={20} />
                 <p>
                   Payment confirmed. {" "}
@@ -484,7 +489,7 @@ function PaymentDialog({
           </div>
           <div>
             <dt>Amount</dt>
-            <dd>{payment.amount} USDC</dd>
+            <dd className="code-value">{payment.amount} USDC</dd>
           </div>
           <div>
             <dt>Risk level</dt>

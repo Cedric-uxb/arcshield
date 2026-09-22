@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ArcShieldError } from "./lib/arc";
@@ -75,6 +75,9 @@ describe("App", () => {
     expect(screen.getByLabelText("Recipient address")).toBeInTheDocument();
     expect(screen.getByLabelText("Amount in USDC")).toBeInTheDocument();
     expect(screen.getByLabelText("Associated website (optional)")).toBeInTheDocument();
+    expect(screen.getByText("Target network").parentElement).toHaveTextContent(
+      /Target network\s*Arc Mainnet \(5042\)/,
+    );
 
     const button = screen.getByRole("button", { name: "Run risk check" });
     expect(button).toBeEnabled();
@@ -187,6 +190,19 @@ describe("App", () => {
       "type",
       "button",
     );
+  });
+
+  it("marks long amount values for wrapping in results and payment review", async () => {
+    const longAmount = `${"1234567890".repeat(5)}.123456`;
+    render(<App />);
+    const user = await enterPayment({ amount: longAmount });
+
+    const result = await screen.findByRole("region", { name: "Risk result" });
+    expect(within(result).getByText(`${longAmount} USDC`)).toHaveClass("code-value");
+
+    await user.click(screen.getByRole("button", { name: "Review payment" }));
+    const dialog = await screen.findByRole("dialog", { name: "Payment review" });
+    expect(within(dialog).getByText(`${longAmount} USDC`)).toHaveClass("code-value");
   });
 
   it("shows a friendly error when the wallet request is rejected", async () => {
@@ -363,6 +379,9 @@ describe("App", () => {
     await user.click(await screen.findByRole("button", { name: "Confirm in wallet" }));
 
     const link = await screen.findByRole("link", { name: /view transaction/i });
+    const status = screen.getByRole("status");
+    expect(status).toHaveAttribute("aria-live", "polite");
+    expect(within(status).getByRole("link", { name: /view transaction/i })).toBe(link);
     expect(link).toHaveAttribute("href", `https://explorer.arc.io/tx/${transactionHash}`);
     expect(arc.switchToArc).toHaveBeenCalledOnce();
     expect(arc.buildMemoPayment).toHaveBeenCalledWith(
