@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { analyzePayment, type RiskReport } from "./core/risk";
 import {
   ARC_EXPLORER_URL,
@@ -9,99 +9,172 @@ import {
   switchToArc,
 } from "./lib/arc";
 
+interface PaymentSnapshot {
+  recipient: string;
+  amount: string;
+  website: string;
+  report: RiskReport;
+}
+
+interface ReviewedPayment extends Omit<PaymentSnapshot, "recipient"> {
+  recipient: `0x${string}`;
+  account: `0x${string}`;
+}
+
 type FlowState =
   | { stage: "editing" }
   | { stage: "checking" }
-  | { stage: "review"; report: RiskReport }
-  | { stage: "submitting"; report: RiskReport }
-  | { stage: "success"; report: RiskReport; hash: `0x${string}` }
+  | { stage: "review"; dialog: "closed"; payment: PaymentSnapshot }
+  | { stage: "review"; dialog: "open"; payment: ReviewedPayment }
+  | { stage: "submitting"; payment: ReviewedPayment }
+  | { stage: "success"; payment: ReviewedPayment; hash: `0x${string}` }
   | { stage: "error"; message: string };
+
+const AMOUNT_ERROR = "Enter a positive USDC amount with up to 6 decimal places";
 
 export default function App() {
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [website, setWebsite] = useState("");
   const [flow, setFlow] = useState<FlowState>({ stage: "editing" });
-  const [account, setAccount] = useState<`0x${string}`>();
   const [riskAccepted, setRiskAccepted] = useState(false);
-  const [reviewOpen, setReviewOpen] = useState(false);
+  const requestVersion = useRef(0);
+  const reviewButton = useRef<HTMLButtonElement>(null);
+
+  const submitting = flow.stage === "submitting";
+  const payment =
+    flow.stage === "review" || flow.stage === "submitting" || flow.stage === "success"
+      ? flow.payment
+      : undefined;
 
   const invalidateReport = () => {
+    if (submitting) return;
+    requestVersion.current += 1;
     setFlow({ stage: "editing" });
-    setReviewOpen(false);
     setRiskAccepted(false);
   };
 
   const runRiskCheck = async () => {
+    const requestId = ++requestVersion.current;
+    const input = { recipient, amount: amount.trim(), website: website.trim() };
     setFlow({ stage: "checking" });
-    setReviewOpen(false);
     setRiskAccepted(false);
 
-    const localReport = analyzePayment({ recipient, website });
+    const localReport = analyzePayment({
+      recipient: input.recipient,
+      website: input.website,
+    });
     if (!localReport.normalizedRecipient) {
-      setFlow({ stage: "review", report: localReport });
+      if (requestId === requestVersion.current) {
+        setFlow({
+          stage: "review",
+          dialog: "closed",
+          payment: { ...input, report: localReport },
+        });
+      }
       return;
     }
 
     try {
       const inspection = await inspectRecipient(localReport.normalizedRecipient);
+      if (requestId !== requestVersion.current) return;
       const report = analyzePayment({
-        recipient,
-        website,
+        recipient: input.recipient,
+        website: input.website,
         recipientHasCode: inspection.hasCode,
         recipientDenylisted: inspection.denylisted,
       });
-      setFlow({ stage: "review", report });
+      setFlow({
+        stage: "review",
+        dialog: "closed",
+        payment: {
+          ...input,
+          recipient: report.normalizedRecipient ?? input.recipient,
+          report,
+        },
+      });
     } catch (error) {
-      setFlow({ stage: "error", message: errorMessage(error) });
+      if (requestId === requestVersion.current) {
+        setFlow({ stage: "error", message: errorMessage(error) });
+      }
     }
   };
 
-  const openPaymentReview = async (report: RiskReport) => {
+  const submitRiskCheck = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (flow.stage !== "checking" && !submitting) void runRiskCheck();
+  };
+
+  const openPaymentReview = async (scanned: PaymentSnapshot) => {
+    if (!isValidAmount(scanned.amount)) {
+      setFlow({ stage: "error", message: AMOUNT_ERROR });
+      return;
+    }
+    const normalizedRecipient = scanned.report.normalizedRecipient;
+    if (!normalizedRecipient) return;
+
+    const requestId = ++requestVersion.current;
     setFlow({ stage: "checking" });
     try {
-      const sender = account ?? (await connectWallet());
-      setAccount(sender);
-      const finalReport = analyzePayment({
-        recipient,
-        sender,
-        website,
-        recipientHasCode: report.codes.includes("ADDRESS_CONTRACT"),
-        recipientDenylisted: report.codes.includes("ADDRESS_DENYLISTED"),
+      const account = await connectWallet();
+      if (requestId !== requestVersion.current) return;
+      const report = analyzePayment({
+        recipient: scanned.recipient,
+        sender: account,
+        website: scanned.website,
+        recipientHasCode: scanned.report.codes.includes("ADDRESS_CONTRACT"),
+        recipientDenylisted: scanned.report.codes.includes("ADDRESS_DENYLISTED"),
       });
-      setFlow({ stage: "review", report: finalReport });
-      if (finalReport.level === "high" && !riskAccepted) return;
-      setReviewOpen(true);
+      const reviewed: ReviewedPayment = {
+        ...scanned,
+        recipient: report.normalizedRecipient ?? normalizedRecipient,
+        account,
+        report,
+      };
+      if (report.level === "high" && !riskAccepted) {
+        setFlow({ stage: "review", dialog: "closed", payment: reviewed });
+        return;
+      }
+      setFlow({ stage: "review", dialog: "open", payment: reviewed });
     } catch (error) {
-      setFlow({ stage: "error", message: errorMessage(error) });
+      if (requestId === requestVersion.current) {
+        setFlow({ stage: "error", message: errorMessage(error) });
+      }
     }
   };
 
-  const confirmPayment = async (report: RiskReport) => {
-    if (!account || !report.normalizedRecipient) return;
-    setFlow({ stage: "submitting", report });
+  const closePaymentReview = (reviewed: ReviewedPayment) => {
+    setFlow({ stage: "review", dialog: "closed", payment: reviewed });
+    window.setTimeout(() => reviewButton.current?.focus(), 0);
+  };
+
+  const handleDialogKeyDown = (
+    event: KeyboardEvent<HTMLElement>,
+    reviewed: ReviewedPayment,
+  ) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closePaymentReview(reviewed);
+    }
+  };
+
+  const confirmPayment = async (reviewed: ReviewedPayment) => {
+    setFlow({ stage: "submitting", payment: reviewed });
     try {
       await switchToArc();
-      const payment = buildMemoPayment({
-        account,
-        recipient: report.normalizedRecipient,
-        amount,
-        report,
+      const paymentRequest = buildMemoPayment({
+        account: reviewed.account,
+        recipient: reviewed.recipient,
+        amount: reviewed.amount,
+        report: reviewed.report,
         operationId: `${Date.now()}`,
       });
-      const { hash } = await sendGuardedPayment(payment);
-      setReviewOpen(false);
-      setFlow({ stage: "success", report, hash });
+      const { hash } = await sendGuardedPayment(paymentRequest);
+      setFlow({ stage: "success", payment: reviewed, hash });
     } catch (error) {
-      setReviewOpen(false);
       setFlow({ stage: "error", message: errorMessage(error) });
     }
   };
-
-  const report =
-    flow.stage === "review" || flow.stage === "submitting" || flow.stage === "success"
-      ? flow.report
-      : undefined;
 
   return (
     <>
@@ -112,14 +185,16 @@ export default function App() {
 
       <main>
         <h1>Check before you pay</h1>
-        <form>
+        <form onSubmit={submitRiskCheck}>
           <label>
             Recipient address
             <input
               name="recipient"
               autoComplete="off"
               value={recipient}
+              disabled={submitting}
               onChange={(event) => {
+                if (submitting) return;
                 setRecipient(event.target.value);
                 invalidateReport();
               }}
@@ -132,7 +207,9 @@ export default function App() {
               name="amount"
               inputMode="decimal"
               value={amount}
+              disabled={submitting}
               onChange={(event) => {
+                if (submitting) return;
                 setAmount(event.target.value);
                 invalidateReport();
               }}
@@ -145,52 +222,63 @@ export default function App() {
               name="website"
               type="url"
               value={website}
+              disabled={submitting}
               onChange={(event) => {
+                if (submitting) return;
                 setWebsite(event.target.value);
                 invalidateReport();
               }}
             />
           </label>
 
-          <button type="button" onClick={runRiskCheck} disabled={flow.stage === "checking"}>
+          <button
+            type="submit"
+            disabled={flow.stage === "checking" || submitting}
+          >
             {flow.stage === "checking" ? "Checking..." : "Run risk check"}
           </button>
         </form>
 
-        {report && (
+        {payment && (
           <section aria-label="Risk result">
             <h2>Risk result</h2>
             <p>Network: Arc Mainnet (5042)</p>
-            <p>Recipient: {report.normalizedRecipient ?? recipient}</p>
-            <p>Amount: {amount} USDC</p>
-            <p>Risk level: {report.level}</p>
+            <p>Recipient: {payment.report.normalizedRecipient ?? payment.recipient}</p>
+            <p>Amount: {payment.amount} USDC</p>
+            <p>Risk level: {payment.report.level}</p>
             <ul>
-              {report.codes.map((code) => (
+              {payment.report.codes.map((code) => (
                 <li key={code}>{code}</li>
               ))}
             </ul>
             <p>ArcShield provides risk indicators, not a safety guarantee.</p>
 
-            {report.level === "high" && report.normalizedRecipient && (
-              <label>
-                <input
-                  type="checkbox"
-                  checked={riskAccepted}
-                  onChange={(event) => setRiskAccepted(event.target.checked)}
-                />
-                I understand the risk
-              </label>
-            )}
+            {payment.report.level === "high" &&
+              payment.report.normalizedRecipient &&
+              flow.stage === "review" &&
+              flow.dialog === "closed" && (
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={riskAccepted}
+                    onChange={(event) => setRiskAccepted(event.target.checked)}
+                  />
+                  I understand the risk
+                </label>
+              )}
 
-            {report.normalizedRecipient && flow.stage === "review" && (
-              <button
-                type="button"
-                disabled={report.level === "high" && !riskAccepted}
-                onClick={() => openPaymentReview(report)}
-              >
-                Review payment
-              </button>
-            )}
+            {payment.report.normalizedRecipient &&
+              flow.stage === "review" &&
+              flow.dialog === "closed" && (
+                <button
+                  ref={reviewButton}
+                  type="button"
+                  disabled={payment.report.level === "high" && !riskAccepted}
+                  onClick={() => openPaymentReview(payment)}
+                >
+                  Review payment
+                </button>
+              )}
           </section>
         )}
 
@@ -203,34 +291,73 @@ export default function App() {
           </p>
         )}
 
-        {reviewOpen && report && (
-          <section role="dialog" aria-modal="true" aria-label="Payment review">
-            <h2>Payment review</h2>
-            <p>Network: Arc Mainnet (5042)</p>
-            <p>Recipient: {report.normalizedRecipient}</p>
-            <p>Amount: {amount} USDC</p>
-            <p>Risk level: {report.level}</p>
-            <p>Reason codes: {report.codes.length > 0 ? report.codes.join(", ") : "None"}</p>
-            <p>ArcShield provides risk indicators, not a safety guarantee.</p>
-            <button
-              type="button"
-              disabled={flow.stage === "submitting"}
-              onClick={() => confirmPayment(report)}
-            >
-              {flow.stage === "submitting" ? "Submitting..." : "Confirm in wallet"}
-            </button>
-          </section>
+        {flow.stage === "review" && flow.dialog === "open" && (
+          <PaymentDialog
+            payment={flow.payment}
+            submitting={false}
+            onCancel={() => closePaymentReview(flow.payment)}
+            onConfirm={() => confirmPayment(flow.payment)}
+            onKeyDown={(event) => handleDialogKeyDown(event, flow.payment)}
+          />
+        )}
+
+        {flow.stage === "submitting" && (
+          <PaymentDialog payment={flow.payment} submitting />
         )}
       </main>
     </>
   );
 }
 
+function PaymentDialog({
+  payment,
+  submitting,
+  onCancel,
+  onConfirm,
+  onKeyDown,
+}: {
+  payment: ReviewedPayment;
+  submitting: boolean;
+  onCancel?: () => void;
+  onConfirm?: () => void;
+  onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void;
+}) {
+  return (
+    <section
+      role="dialog"
+      aria-modal="true"
+      aria-label="Payment review"
+      onKeyDown={onKeyDown}
+    >
+      <h2>Payment review</h2>
+      <p>Network: Arc Mainnet (5042)</p>
+      <p>Sender: {payment.account}</p>
+      <p>Recipient: {payment.recipient}</p>
+      <p>Amount: {payment.amount} USDC</p>
+      <p>Risk level: {payment.report.level}</p>
+      <p>
+        Reason codes: {payment.report.codes.length > 0 ? payment.report.codes.join(", ") : "None"}
+      </p>
+      <p>ArcShield provides risk indicators, not a safety guarantee.</p>
+      <button type="button" autoFocus disabled={submitting} onClick={onCancel}>
+        Cancel
+      </button>
+      <button type="button" disabled={submitting} onClick={onConfirm}>
+        Confirm in wallet
+      </button>
+      {submitting && <p role="status">Submitting payment...</p>}
+    </section>
+  );
+}
+
+function isValidAmount(value: string): boolean {
+  const amount = value.trim();
+  return /^\d+(?:\.\d{1,6})?$/.test(amount) && /[1-9]/.test(amount);
+}
+
 function errorMessage(error: unknown): string {
-  if (error && typeof error === "object" && "code" in error) {
-    if (error.code === 4001 || error.code === "USER_REJECTED") {
-      return "You rejected the wallet request";
-    }
+  if (error && typeof error === "object" && "code" in error && error.code === "USER_REJECTED") {
+    return "You rejected the wallet request";
   }
   return error instanceof Error ? error.message : "Something went wrong. Please try again.";
 }
