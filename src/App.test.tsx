@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  ARC_CHAIN_ID,
   ArcShieldError,
   MEMO_ADDRESS,
   RULESET_VERSION,
@@ -12,6 +13,7 @@ import App from "./App";
 const arc = vi.hoisted(() => ({
   inspectRecipient: vi.fn(),
   connectWallet: vi.fn(),
+  getWalletChainId: vi.fn(),
   switchToArc: vi.fn(),
   buildMemoPayment: vi.fn(),
   sendGuardedPayment: vi.fn(),
@@ -23,6 +25,7 @@ vi.mock("./lib/arc", async (importOriginal) => {
     ...actual,
     inspectRecipient: arc.inspectRecipient,
     connectWallet: arc.connectWallet,
+    getWalletChainId: arc.getWalletChainId,
     switchToArc: arc.switchToArc,
     buildMemoPayment: arc.buildMemoPayment,
     sendGuardedPayment: arc.sendGuardedPayment,
@@ -34,6 +37,7 @@ const secondRecipient = "0x3333333333333333333333333333333333333333";
 const account = "0x1111111111111111111111111111111111111111";
 const secondAccount = "0x4444444444444444444444444444444444444444";
 const transactionHash = `0x${"ab".repeat(32)}` as const;
+const replacementHash = `0x${"cd".repeat(32)}` as const;
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -65,6 +69,7 @@ async function enterPayment({
 beforeEach(() => {
   arc.inspectRecipient.mockReset().mockResolvedValue({ hasCode: false, denylisted: false });
   arc.connectWallet.mockReset().mockResolvedValue(account);
+  arc.getWalletChainId.mockReset().mockResolvedValue(ARC_CHAIN_ID);
   arc.switchToArc.mockReset().mockResolvedValue(undefined);
   arc.buildMemoPayment.mockReset().mockReturnValue({ payment: true });
   arc.sendGuardedPayment.mockReset().mockResolvedValue({
@@ -89,7 +94,7 @@ describe("App", () => {
     expect(button).toHaveAttribute("type", "submit");
   });
 
-  it("connects the optional header wallet without claiming the target network is verified", async () => {
+  it("verifies Arc Mainnet after the header wallet connects", async () => {
     render(<App />);
     const user = userEvent.setup();
 
@@ -103,9 +108,41 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: `Connected wallet ${account}` })).toHaveTextContent(
       "0x1111...1111",
     );
+    expect(screen.getByText("Arc Mainnet verified").parentElement).toHaveClass("verified");
     expect(arc.connectWallet).toHaveBeenCalledOnce();
+    expect(arc.getWalletChainId).toHaveBeenCalledOnce();
     expect(arc.switchToArc).not.toHaveBeenCalled();
-    expect(screen.queryByText(/verified/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the actual chain id when the connected wallet is on the wrong network", async () => {
+    arc.getWalletChainId.mockResolvedValue(1);
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Connect wallet" }));
+
+    const network = await screen.findByText(/Wrong network.*chain ID 1/i);
+    expect(network.parentElement).toHaveClass("wrong-network");
+    expect(screen.getByRole("button", { name: `Connected wallet ${account}` })).toBeInTheDocument();
+    expect(arc.switchToArc).not.toHaveBeenCalled();
+  });
+
+  it("keeps the account visible but does not claim verification when the chain query fails", async () => {
+    arc.getWalletChainId.mockRejectedValue(
+      new ArcShieldError("RPC_FAILURE", "The wallet network could not be read."),
+    );
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Connect wallet" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The wallet network could not be read.",
+    );
+    expect(screen.getByText("Network unverified").parentElement).toHaveClass("unverified");
+    expect(screen.getByRole("button", { name: `Connected wallet ${account}` })).toBeInTheDocument();
+    expect(screen.queryByText("Arc Mainnet verified")).not.toBeInTheDocument();
+    expect(arc.switchToArc).not.toHaveBeenCalled();
   });
 
   it("handles header wallet connection errors without changing the network claim", async () => {
@@ -122,6 +159,7 @@ describe("App", () => {
     expect(screen.getByText("Target network").parentElement).toHaveTextContent(
       /Target network\s*Arc Mainnet \(5042\)/,
     );
+    expect(arc.getWalletChainId).not.toHaveBeenCalled();
   });
 
   it("renders ADDRESS_INVALID without offering payment review", async () => {
@@ -498,6 +536,55 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Review payment" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Confirm in wallet" })).not.toBeInTheDocument();
     expect(arc.sendGuardedPayment).toHaveBeenCalledOnce();
+  });
+
+  it("shows a replacement hash and requires inspection before retrying", async () => {
+    arc.sendGuardedPayment.mockRejectedValue(
+      new ArcShieldError(
+        "TRANSACTION_REPLACED",
+        "The Arc payment was replaced by a different transaction.",
+        undefined,
+        replacementHash,
+      ),
+    );
+    render(<App />);
+    const user = await enterPayment();
+    await user.click(await screen.findByRole("button", { name: "Review payment" }));
+    await user.click(screen.getByRole("button", { name: "Confirm in wallet" }));
+
+    const status = await screen.findByRole("status", { name: "Transaction replaced" });
+    expect(status).toHaveTextContent(/inspect the replacement before retrying/i);
+    expect(status).toHaveTextContent(replacementHash);
+    expect(within(status).getByRole("link", { name: /inspect replacement/i })).toHaveAttribute(
+      "href",
+      `https://explorer.arc.io/tx/${replacementHash}`,
+    );
+    expect(screen.queryByText("Payment confirmed.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Review payment" })).not.toBeInTheDocument();
+  });
+
+  it("shows a cancellation hash without reporting payment success", async () => {
+    arc.sendGuardedPayment.mockRejectedValue(
+      new ArcShieldError(
+        "TRANSACTION_CANCELLED",
+        "The Arc payment was cancelled by a replacement transaction.",
+        undefined,
+        replacementHash,
+      ),
+    );
+    render(<App />);
+    const user = await enterPayment();
+    await user.click(await screen.findByRole("button", { name: "Review payment" }));
+    await user.click(screen.getByRole("button", { name: "Confirm in wallet" }));
+
+    const status = await screen.findByRole("status", { name: "Payment cancelled" });
+    expect(status).toHaveTextContent(/payment was cancelled/i);
+    expect(status).toHaveTextContent(replacementHash);
+    expect(within(status).getByRole("link", { name: /view cancellation/i })).toHaveAttribute(
+      "href",
+      `https://explorer.arc.io/tx/${replacementHash}`,
+    );
+    expect(screen.queryByText("Payment confirmed.")).not.toBeInTheDocument();
   });
 
   it("shows a friendly error when wallet confirmation is rejected", async () => {

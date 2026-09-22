@@ -10,12 +10,14 @@ import {
 } from "lucide-react";
 import { analyzePayment, type RiskReport } from "./core/risk";
 import {
+  ARC_CHAIN_ID,
   ARC_EXPLORER_URL,
   ArcShieldError,
   MEMO_ADDRESS,
   RULESET_VERSION,
   buildMemoPayment,
   connectWallet,
+  getWalletChainId,
   hashWebsite,
   inspectRecipient,
   sendGuardedPayment,
@@ -34,6 +36,14 @@ interface ReviewedPayment extends Omit<PaymentSnapshot, "recipient"> {
   account: `0x${string}`;
 }
 
+type WalletNetworkState =
+  | { status: "target" }
+  | { status: "verified" }
+  | { status: "wrong-network"; chainId: number }
+  | { status: "unverified" };
+
+type BroadcastOutcome = "unknown" | "replaced" | "cancelled";
+
 type FlowState =
   | { stage: "editing" }
   | { stage: "checking" }
@@ -41,7 +51,12 @@ type FlowState =
   | { stage: "review"; dialog: "open"; payment: ReviewedPayment }
   | { stage: "submitting"; payment: ReviewedPayment }
   | { stage: "success"; payment: ReviewedPayment; hash: `0x${string}` }
-  | { stage: "pending"; payment: ReviewedPayment; hash: `0x${string}` }
+  | {
+      stage: "pending";
+      payment: ReviewedPayment;
+      hash: `0x${string}`;
+      outcome: BroadcastOutcome;
+    }
   | { stage: "error"; message: string };
 
 const AMOUNT_ERROR = "Enter a positive USDC amount with up to 6 decimal places";
@@ -53,6 +68,7 @@ export default function App() {
   const [flow, setFlow] = useState<FlowState>({ stage: "editing" });
   const [riskAccepted, setRiskAccepted] = useState(false);
   const [walletAccount, setWalletAccount] = useState<`0x${string}`>();
+  const [walletNetwork, setWalletNetwork] = useState<WalletNetworkState>({ status: "target" });
   const [walletConnecting, setWalletConnecting] = useState(false);
   const [walletError, setWalletError] = useState("");
   const requestVersion = useRef(0);
@@ -130,9 +146,23 @@ export default function App() {
 
   const connectHeaderWallet = async () => {
     setWalletConnecting(true);
+    setWalletAccount(undefined);
+    setWalletNetwork({ status: "target" });
     setWalletError("");
     try {
-      setWalletAccount(await connectWallet());
+      const account = await connectWallet();
+      setWalletAccount(account);
+      try {
+        const chainId = await getWalletChainId();
+        setWalletNetwork(
+          chainId === ARC_CHAIN_ID
+            ? { status: "verified" }
+            : { status: "wrong-network", chainId },
+        );
+      } catch (error) {
+        setWalletNetwork({ status: "unverified" });
+        setWalletError(errorMessage(error));
+      }
     } catch (error) {
       setWalletError(errorMessage(error));
     } finally {
@@ -241,9 +271,9 @@ export default function App() {
       const { hash } = await sendGuardedPayment(paymentRequest);
       setFlow({ stage: "success", payment: revalidated, hash });
     } catch (error) {
-      const hash = unknownTransactionHash(error);
-      if (hash) {
-        setFlow({ stage: "pending", payment: reviewed, hash });
+      const broadcast = broadcastError(error);
+      if (broadcast) {
+        setFlow({ stage: "pending", payment: reviewed, ...broadcast });
         return;
       }
       setFlow({ stage: "error", message: errorMessage(error) });
@@ -251,6 +281,8 @@ export default function App() {
   };
 
   const RiskIcon = payment?.report.level === "low" ? CircleCheck : TriangleAlert;
+  const broadcastStatus =
+    flow.stage === "pending" ? BROADCAST_STATUS[flow.outcome] : undefined;
 
   return (
     <>
@@ -261,9 +293,31 @@ export default function App() {
             <strong>ArcShield</strong>
           </div>
           <div className="header-controls">
-            <span className="network-status">
-              <span className="network-label">Target network</span>
-              <span>Arc Mainnet (5042)</span>
+            <span
+              className={`network-status ${walletNetwork.status}`}
+              aria-live="polite"
+            >
+              {walletNetwork.status === "target" ? (
+                <>
+                  <span className="network-label">Target network</span>
+                  <span>Arc Mainnet (5042)</span>
+                </>
+              ) : walletNetwork.status === "verified" ? (
+                <>
+                  <CircleCheck aria-hidden="true" size={15} />
+                  <span>Arc Mainnet verified</span>
+                </>
+              ) : walletNetwork.status === "wrong-network" ? (
+                <>
+                  <TriangleAlert aria-hidden="true" size={15} />
+                  <span>Wrong network: chain ID {walletNetwork.chainId}</span>
+                </>
+              ) : (
+                <>
+                  <TriangleAlert aria-hidden="true" size={15} />
+                  <span>Network unverified</span>
+                </>
+              )}
             </span>
             <button
               className="wallet-button"
@@ -497,22 +551,19 @@ export default function App() {
               <div
                 className="status-message warning"
                 role="status"
-                aria-label="Transaction status unknown"
+                aria-label={broadcastStatus?.label}
                 aria-live="polite"
                 aria-atomic="true"
               >
                 <TriangleAlert aria-hidden="true" size={20} />
                 <div className="status-content">
-                  <p>
-                    Transaction status is unknown after broadcast. Do not resubmit until you
-                    check it in the explorer.
-                  </p>
+                  <p>{broadcastStatus?.message}</p>
                   <p className="transaction-hash">
-                    <span>Transaction hash</span>
+                    <span>{broadcastStatus?.hashLabel}</span>
                     <code>{flow.hash}</code>
                   </p>
                   <a href={`${ARC_EXPLORER_URL}/tx/${flow.hash}`}>
-                    Check transaction
+                    {broadcastStatus?.linkLabel}
                     <ExternalLink aria-hidden="true" size={15} />
                   </a>
                 </div>
@@ -719,8 +770,44 @@ function shortenAddress(account: `0x${string}`): string {
   return `${account.slice(0, 6)}...${account.slice(-4)}`;
 }
 
-function unknownTransactionHash(error: unknown): `0x${string}` | undefined {
-  return error instanceof ArcShieldError && error.code === "TRANSACTION_STATUS_UNKNOWN"
-    ? error.transactionHash
-    : undefined;
+const BROADCAST_STATUS = {
+  unknown: {
+    label: "Transaction status unknown",
+    message:
+      "Transaction status is unknown after broadcast. Do not resubmit until you check it in the explorer.",
+    hashLabel: "Transaction hash",
+    linkLabel: "Check transaction",
+  },
+  replaced: {
+    label: "Transaction replaced",
+    message:
+      "The payment was replaced by a different transaction. Inspect the replacement before retrying.",
+    hashLabel: "Replacement hash",
+    linkLabel: "Inspect replacement",
+  },
+  cancelled: {
+    label: "Payment cancelled",
+    message: "The payment was cancelled by a replacement transaction.",
+    hashLabel: "Cancellation hash",
+    linkLabel: "View cancellation",
+  },
+} as const satisfies Record<
+  BroadcastOutcome,
+  { label: string; message: string; hashLabel: string; linkLabel: string }
+>;
+
+function broadcastError(
+  error: unknown,
+): { outcome: BroadcastOutcome; hash: `0x${string}` } | undefined {
+  if (!(error instanceof ArcShieldError) || !error.transactionHash) return undefined;
+  if (error.code === "TRANSACTION_STATUS_UNKNOWN") {
+    return { outcome: "unknown", hash: error.transactionHash };
+  }
+  if (error.code === "TRANSACTION_REPLACED") {
+    return { outcome: "replaced", hash: error.transactionHash };
+  }
+  if (error.code === "TRANSACTION_CANCELLED") {
+    return { outcome: "cancelled", hash: error.transactionHash };
+  }
+  return undefined;
 }

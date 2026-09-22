@@ -79,7 +79,7 @@ Do not perform step 6 with real funds until the exact transaction has been revie
 
 Local verification:
 
-- [x] `npm test` passes in the submission commit (3 files, 66 tests).
+- [x] `npm test` passes at the recorded submission commit.
 - [x] `npm run build` passes in the submission commit.
 - [x] `git diff --check` passes before commit.
 - [x] Browser QA completed locally at `1440x900` and `390x844`; low- and high-risk results rendered without overlap or horizontal overflow, and the browser console remained clear.

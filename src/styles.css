@@ -88,6 +88,24 @@ a {
   font-weight: 600;
 }
 
+.network-status.verified {
+  color: #12643e;
+  border-color: #b9d9c6;
+  background: #edf7f1;
+}
+
+.network-status.wrong-network {
+  color: #735000;
+  border-color: #e7c772;
+  background: #fff7df;
+}
+
+.network-status.unverified {
+  color: #98251d;
+  border-color: #edb5b0;
+  background: #fff1f0;
+}
+
 .wallet-button {
   min-height: 2rem;
   padding: 0.25rem 0.625rem;
