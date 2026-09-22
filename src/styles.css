@@ -40,6 +40,7 @@ a {
 }
 
 .brand,
+.header-controls,
 .network-status,
 .panel-heading,
 .risk-heading,
@@ -63,6 +64,12 @@ a {
   color: #16794a;
 }
 
+.header-controls {
+  position: relative;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 .network-status {
   min-height: 2rem;
   gap: 0.375rem;
@@ -79,6 +86,33 @@ a {
 .network-label {
   color: #66716b;
   font-weight: 600;
+}
+
+.wallet-button {
+  min-height: 2rem;
+  padding: 0.25rem 0.625rem;
+  border-color: #7b8981;
+  color: #27322d;
+  background: #ffffff;
+  font-size: 0.8125rem;
+}
+
+.wallet-button:hover:not(:disabled) {
+  background: #f1f3f2;
+}
+
+.wallet-error {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  right: 0;
+  max-width: 22rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid #edb5b0;
+  border-radius: 4px;
+  color: #98251d;
+  background: #fff1f0;
+  font-size: 0.75rem;
+  line-height: 1.35;
 }
 
 .app-shell {
@@ -279,7 +313,7 @@ a:focus-visible {
   border-top-color: #238553;
 }
 
-.risk-medium {
+.risk-warning {
   color: #805700;
   border-top-color: #d99b18;
 }
@@ -455,6 +489,28 @@ a:focus-visible {
   text-underline-offset: 0.2em;
 }
 
+.status-content {
+  display: grid;
+  min-width: 0;
+  gap: 0.375rem;
+}
+
+.transaction-hash {
+  display: grid;
+  min-width: 0;
+  gap: 0.125rem;
+}
+
+.transaction-hash span {
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.transaction-hash code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .dialog-backdrop {
   position: fixed;
   z-index: 10;
@@ -489,6 +545,13 @@ a:focus-visible {
 
 .dialog-details > div {
   grid-template-columns: 6rem minmax(0, 1fr);
+}
+
+.memo-disclosure {
+  margin-top: 1rem;
+  color: #34423b;
+  font-size: 0.8125rem;
+  line-height: 1.5;
 }
 
 .submitting-status {
@@ -535,6 +598,18 @@ a:focus-visible {
     align-items: flex-start;
     flex-direction: column;
     gap: 0.5rem;
+  }
+
+  .header-controls {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .wallet-error {
+    position: static;
+    width: 100%;
+    max-width: none;
   }
 
   .panel,

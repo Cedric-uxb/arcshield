@@ -1,7 +1,12 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ArcShieldError } from "./lib/arc";
+import {
+  ArcShieldError,
+  MEMO_ADDRESS,
+  RULESET_VERSION,
+  hashWebsite,
+} from "./lib/arc";
 import App from "./App";
 
 const arc = vi.hoisted(() => ({
@@ -84,6 +89,41 @@ describe("App", () => {
     expect(button).toHaveAttribute("type", "submit");
   });
 
+  it("connects the optional header wallet without claiming the target network is verified", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    expect(screen.getByRole("button", { name: "Connect wallet" })).toBeInTheDocument();
+    expect(screen.getByText("Target network").parentElement).toHaveTextContent(
+      /Target network\s*Arc Mainnet \(5042\)/,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Connect wallet" }));
+
+    expect(await screen.findByRole("button", { name: `Connected wallet ${account}` })).toHaveTextContent(
+      "0x1111...1111",
+    );
+    expect(arc.connectWallet).toHaveBeenCalledOnce();
+    expect(arc.switchToArc).not.toHaveBeenCalled();
+    expect(screen.queryByText(/verified/i)).not.toBeInTheDocument();
+  });
+
+  it("handles header wallet connection errors without changing the network claim", async () => {
+    arc.connectWallet.mockRejectedValue(
+      new ArcShieldError("USER_REJECTED", "The wallet request was cancelled."),
+    );
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Connect wallet" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("You rejected the wallet request");
+    expect(screen.getByRole("button", { name: "Connect wallet" })).toBeEnabled();
+    expect(screen.getByText("Target network").parentElement).toHaveTextContent(
+      /Target network\s*Arc Mainnet \(5042\)/,
+    );
+  });
+
   it("renders ADDRESS_INVALID without offering payment review", async () => {
     render(<App />);
 
@@ -101,10 +141,9 @@ describe("App", () => {
     await enterPayment({ website: "http://example.com" });
 
     expect(await screen.findByText("ADDRESS_CONTRACT")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Risk result" })).toHaveAttribute(
-      "aria-live",
-      "polite",
-    );
+    const result = screen.getByRole("region", { name: "Risk result" });
+    expect(result).toHaveAttribute("aria-live", "polite");
+    expect(result).toHaveClass("risk-warning");
     expect(screen.getByText("URL_NO_HTTPS")).toBeInTheDocument();
   });
 
@@ -184,7 +223,14 @@ describe("App", () => {
     expect(dialog).toHaveTextContent("0x52908400098527886E0F7030069857D2E4169EE7");
     expect(dialog).toHaveTextContent(account);
     expect(dialog).toHaveTextContent("1.25 USDC");
+    expect(dialog).toHaveTextContent(MEMO_ADDRESS);
+    expect(dialog).toHaveTextContent("arcshield-payment-receipt");
+    expect(dialog).toHaveTextContent(hashWebsite("http://example.com/"));
+    expect(dialog).toHaveTextContent("warning");
     expect(dialog).toHaveTextContent("URL_NO_HTTPS");
+    expect(dialog).toHaveTextContent(RULESET_VERSION);
+    expect(dialog).toHaveTextContent(/raw URL is not stored/i);
+    expect(dialog).toHaveTextContent(/predictable URL hash may be guessable/i);
     expect(dialog).toHaveTextContent(/indicators.*not a safety guarantee/i);
     expect(screen.getByRole("button", { name: "Confirm in wallet" })).toHaveAttribute(
       "type",
@@ -241,12 +287,16 @@ describe("App", () => {
 
     await user.click(review);
     expect(await screen.findByRole("dialog", { name: "Payment review" })).toHaveTextContent(account);
+    expect(screen.getByRole("button", { name: `Connected wallet ${account}` })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     await user.click(screen.getByRole("button", { name: "Review payment" }));
 
     expect(await screen.findByRole("dialog", { name: "Payment review" })).toHaveTextContent(
       secondAccount,
     );
+    expect(
+      screen.getByRole("button", { name: `Connected wallet ${secondAccount}` }),
+    ).toBeInTheDocument();
     expect(arc.connectWallet).toHaveBeenCalledTimes(2);
   });
 
@@ -313,6 +363,39 @@ describe("App", () => {
     await user.click(cancel);
     expect(screen.queryByRole("dialog", { name: "Payment review" })).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "Review payment" })).toHaveFocus());
+  });
+
+  it("makes the background inert and traps focus inside review and submitting dialogs", async () => {
+    const switching = deferred<void>();
+    arc.switchToArc.mockReturnValue(switching.promise);
+    render(<App />);
+    const user = await enterPayment();
+    await user.click(await screen.findByRole("button", { name: "Review payment" }));
+
+    const background = screen.getByRole("main").parentElement;
+    const cancel = await screen.findByRole("button", { name: "Cancel" });
+    const confirm = screen.getByRole("button", { name: "Confirm in wallet" });
+    expect(background).toHaveAttribute("inert");
+    expect(cancel).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(confirm).toHaveFocus();
+    await user.tab();
+    expect(cancel).toHaveFocus();
+    await user.tab();
+    expect(confirm).toHaveFocus();
+    await user.tab();
+    expect(cancel).toHaveFocus();
+
+    await user.click(confirm);
+    const submittingStatus = screen.getByRole("status", { name: "Submitting payment" });
+    await waitFor(() => expect(submittingStatus).toHaveFocus());
+    await user.tab();
+    expect(submittingStatus).toHaveFocus();
+    expect(background).toHaveAttribute("inert");
+
+    await act(async () => switching.resolve());
+    await screen.findByRole("link", { name: /view transaction/i });
+    expect(background).not.toHaveAttribute("inert");
   });
 
   it("keeps background controls disabled and only lets Escape close review", async () => {
@@ -382,12 +465,39 @@ describe("App", () => {
     const status = screen.getByRole("status");
     expect(status).toHaveAttribute("aria-live", "polite");
     expect(within(status).getByRole("link", { name: /view transaction/i })).toBe(link);
+    expect(status).toHaveTextContent(transactionHash);
     expect(link).toHaveAttribute("href", `https://explorer.arc.io/tx/${transactionHash}`);
     expect(arc.switchToArc).toHaveBeenCalledOnce();
     expect(arc.buildMemoPayment).toHaveBeenCalledWith(
       expect.objectContaining({ account, recipient, amount: "1.25" }),
     );
     expect(arc.sendGuardedPayment).toHaveBeenCalledWith({ payment: true });
+  });
+
+  it("shows a locked pending state when broadcast receipt status is unknown", async () => {
+    const unknownError = new ArcShieldError(
+      "TRANSACTION_STATUS_UNKNOWN",
+      "Transaction receipt status is unknown.",
+      undefined,
+      transactionHash,
+    );
+    arc.sendGuardedPayment.mockRejectedValue(unknownError);
+    render(<App />);
+    const user = await enterPayment();
+    await user.click(await screen.findByRole("button", { name: "Review payment" }));
+    await user.click(screen.getByRole("button", { name: "Confirm in wallet" }));
+
+    const status = await screen.findByRole("status", { name: "Transaction status unknown" });
+    expect(status).toHaveTextContent(transactionHash);
+    expect(within(status).getByRole("link", { name: /check transaction/i })).toHaveAttribute(
+      "href",
+      `https://explorer.arc.io/tx/${transactionHash}`,
+    );
+    expect(screen.getByLabelText("Recipient address")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Run risk check" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Review payment" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Confirm in wallet" })).not.toBeInTheDocument();
+    expect(arc.sendGuardedPayment).toHaveBeenCalledOnce();
   });
 
   it("shows a friendly error when wallet confirmation is rejected", async () => {

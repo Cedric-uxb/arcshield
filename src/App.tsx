@@ -11,8 +11,12 @@ import {
 import { analyzePayment, type RiskReport } from "./core/risk";
 import {
   ARC_EXPLORER_URL,
+  ArcShieldError,
+  MEMO_ADDRESS,
+  RULESET_VERSION,
   buildMemoPayment,
   connectWallet,
+  hashWebsite,
   inspectRecipient,
   sendGuardedPayment,
   switchToArc,
@@ -37,6 +41,7 @@ type FlowState =
   | { stage: "review"; dialog: "open"; payment: ReviewedPayment }
   | { stage: "submitting"; payment: ReviewedPayment }
   | { stage: "success"; payment: ReviewedPayment; hash: `0x${string}` }
+  | { stage: "pending"; payment: ReviewedPayment; hash: `0x${string}` }
   | { stage: "error"; message: string };
 
 const AMOUNT_ERROR = "Enter a positive USDC amount with up to 6 decimal places";
@@ -47,19 +52,26 @@ export default function App() {
   const [website, setWebsite] = useState("");
   const [flow, setFlow] = useState<FlowState>({ stage: "editing" });
   const [riskAccepted, setRiskAccepted] = useState(false);
+  const [walletAccount, setWalletAccount] = useState<`0x${string}`>();
+  const [walletConnecting, setWalletConnecting] = useState(false);
+  const [walletError, setWalletError] = useState("");
   const requestVersion = useRef(0);
   const reviewButton = useRef<HTMLButtonElement>(null);
 
   const submitting = flow.stage === "submitting";
   const reviewOpen = flow.stage === "review" && flow.dialog === "open";
   const modalOpen = reviewOpen || submitting;
+  const paymentLocked = modalOpen || flow.stage === "pending";
   const payment =
-    flow.stage === "review" || flow.stage === "submitting" || flow.stage === "success"
+    flow.stage === "review" ||
+    flow.stage === "submitting" ||
+    flow.stage === "success" ||
+    flow.stage === "pending"
       ? flow.payment
       : undefined;
 
   const invalidateReport = () => {
-    if (modalOpen) return;
+    if (paymentLocked) return;
     requestVersion.current += 1;
     setFlow({ stage: "editing" });
     setRiskAccepted(false);
@@ -113,7 +125,19 @@ export default function App() {
 
   const submitRiskCheck = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (flow.stage !== "checking" && !modalOpen) void runRiskCheck();
+    if (flow.stage !== "checking" && !paymentLocked) void runRiskCheck();
+  };
+
+  const connectHeaderWallet = async () => {
+    setWalletConnecting(true);
+    setWalletError("");
+    try {
+      setWalletAccount(await connectWallet());
+    } catch (error) {
+      setWalletError(errorMessage(error));
+    } finally {
+      setWalletConnecting(false);
+    }
   };
 
   const openPaymentReview = async (scanned: PaymentSnapshot) => {
@@ -128,6 +152,8 @@ export default function App() {
     setFlow({ stage: "checking" });
     try {
       const account = await connectWallet();
+      setWalletAccount(account);
+      setWalletError("");
       if (requestId !== requestVersion.current) return;
       const report = analyzePayment({
         recipient: scanned.recipient,
@@ -180,6 +206,8 @@ export default function App() {
     setFlow({ stage: "submitting", payment: reviewed });
     try {
       const account = await connectWallet();
+      setWalletAccount(account);
+      setWalletError("");
       if (account.toLowerCase() !== reviewed.account.toLowerCase()) {
         setRiskAccepted(false);
         returnToReview(reviewed, "Wallet account changed. Review the payment again.");
@@ -213,6 +241,11 @@ export default function App() {
       const { hash } = await sendGuardedPayment(paymentRequest);
       setFlow({ stage: "success", payment: revalidated, hash });
     } catch (error) {
+      const hash = unknownTransactionHash(error);
+      if (hash) {
+        setFlow({ stage: "pending", payment: reviewed, hash });
+        return;
+      }
       setFlow({ stage: "error", message: errorMessage(error) });
     }
   };
@@ -221,18 +254,44 @@ export default function App() {
 
   return (
     <>
-      <header className="app-header">
-        <div className="brand">
-          <ShieldCheck aria-hidden="true" size={22} />
-          <strong>ArcShield</strong>
-        </div>
-        <span className="network-status">
-          <span className="network-label">Target network</span>
-          <span>Arc Mainnet (5042)</span>
-        </span>
-      </header>
+      <div className="app-content" inert={modalOpen ? true : undefined}>
+        <header className="app-header">
+          <div className="brand">
+            <ShieldCheck aria-hidden="true" size={22} />
+            <strong>ArcShield</strong>
+          </div>
+          <div className="header-controls">
+            <span className="network-status">
+              <span className="network-label">Target network</span>
+              <span>Arc Mainnet (5042)</span>
+            </span>
+            <button
+              className="wallet-button"
+              type="button"
+              disabled={walletConnecting}
+              aria-label={walletAccount ? `Connected wallet ${walletAccount}` : "Connect wallet"}
+              onClick={() => void connectHeaderWallet()}
+            >
+              {walletConnecting ? (
+                <LoaderCircle className="spinner" aria-hidden="true" size={16} />
+              ) : (
+                <Wallet aria-hidden="true" size={16} />
+              )}
+              {walletConnecting
+                ? "Connecting..."
+                : walletAccount
+                  ? shortenAddress(walletAccount)
+                  : "Connect wallet"}
+            </button>
+            {walletError && (
+              <p className="wallet-error" role="alert">
+                {walletError}
+              </p>
+            )}
+          </div>
+        </header>
 
-      <main className="app-shell">
+        <main className="app-shell">
         <div className="page-heading">
           <h1>Check before you pay</h1>
         </div>
@@ -253,9 +312,9 @@ export default function App() {
                   name="recipient"
                   autoComplete="off"
                   value={recipient}
-                  disabled={modalOpen}
+                  disabled={paymentLocked}
                   onChange={(event) => {
-                    if (modalOpen) return;
+                    if (paymentLocked) return;
                     setRecipient(event.target.value);
                     invalidateReport();
                   }}
@@ -268,9 +327,9 @@ export default function App() {
                   name="amount"
                   inputMode="decimal"
                   value={amount}
-                  disabled={modalOpen}
+                  disabled={paymentLocked}
                   onChange={(event) => {
-                    if (modalOpen) return;
+                    if (paymentLocked) return;
                     setAmount(event.target.value);
                     invalidateReport();
                   }}
@@ -283,9 +342,9 @@ export default function App() {
                   name="website"
                   type="url"
                   value={website}
-                  disabled={modalOpen}
+                  disabled={paymentLocked}
                   onChange={(event) => {
-                    if (modalOpen) return;
+                    if (paymentLocked) return;
                     setWebsite(event.target.value);
                     invalidateReport();
                   }}
@@ -295,7 +354,7 @@ export default function App() {
               <button
                 className="primary-button"
                 type="submit"
-                disabled={flow.stage === "checking" || modalOpen}
+                disabled={flow.stage === "checking" || paymentLocked}
               >
                 {flow.stage === "checking" ? (
                   <LoaderCircle className="spinner" aria-hidden="true" size={18} />
@@ -420,31 +479,60 @@ export default function App() {
                 aria-atomic="true"
               >
                 <CircleCheck aria-hidden="true" size={20} />
-                <p>
-                  Payment confirmed. {" "}
+                <div className="status-content">
+                  <p>Payment confirmed.</p>
+                  <p className="transaction-hash">
+                    <span>Transaction hash</span>
+                    <code>{flow.hash}</code>
+                  </p>
                   <a href={`${ARC_EXPLORER_URL}/tx/${flow.hash}`}>
                     View transaction
                     <ExternalLink aria-hidden="true" size={15} />
                   </a>
-                </p>
+                </div>
+              </div>
+            )}
+
+            {flow.stage === "pending" && (
+              <div
+                className="status-message warning"
+                role="status"
+                aria-label="Transaction status unknown"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                <TriangleAlert aria-hidden="true" size={20} />
+                <div className="status-content">
+                  <p>
+                    Transaction status is unknown after broadcast. Do not resubmit until you
+                    check it in the explorer.
+                  </p>
+                  <p className="transaction-hash">
+                    <span>Transaction hash</span>
+                    <code>{flow.hash}</code>
+                  </p>
+                  <a href={`${ARC_EXPLORER_URL}/tx/${flow.hash}`}>
+                    Check transaction
+                    <ExternalLink aria-hidden="true" size={15} />
+                  </a>
+                </div>
               </div>
             )}
           </div>
         </div>
+        </main>
+      </div>
 
-        {flow.stage === "review" && flow.dialog === "open" && (
-          <PaymentDialog
-            payment={flow.payment}
-            submitting={false}
-            onCancel={() => returnToReview(flow.payment)}
-            onConfirm={() => confirmPayment(flow.payment)}
-          />
-        )}
+      {flow.stage === "review" && flow.dialog === "open" && (
+        <PaymentDialog
+          payment={flow.payment}
+          submitting={false}
+          onCancel={() => returnToReview(flow.payment)}
+          onConfirm={() => confirmPayment(flow.payment)}
+        />
+      )}
 
-        {flow.stage === "submitting" && (
-          <PaymentDialog payment={flow.payment} submitting />
-        )}
-      </main>
+      {flow.stage === "submitting" && <PaymentDialog payment={flow.payment} submitting />}
     </>
   );
 }
@@ -460,9 +548,49 @@ function PaymentDialog({
   onCancel?: () => void;
   onConfirm?: () => void;
 }) {
+  const dialogRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const focusable = () =>
+      Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+    const initialTarget = submitting
+      ? dialog.querySelector<HTMLElement>("[data-submitting-focus]")
+      : dialog.querySelector<HTMLElement>("[data-initial-focus]");
+    initialTarget?.focus();
+
+    const trapFocus = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const elements = focusable();
+      const first = elements[0];
+      const last = elements.at(-1);
+      if (!first || !last) return;
+
+      if (
+        elements.length === 1 ||
+        !dialog.contains(document.activeElement) ||
+        (event.shiftKey && document.activeElement === first) ||
+        (!event.shiftKey && document.activeElement === last)
+      ) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      }
+    };
+
+    document.addEventListener("keydown", trapFocus);
+    return () => document.removeEventListener("keydown", trapFocus);
+  }, [submitting]);
+
   return (
     <div className="dialog-backdrop">
       <section
+        ref={dialogRef}
         className="payment-dialog"
         role="dialog"
         aria-modal="true"
@@ -492,6 +620,18 @@ function PaymentDialog({
             <dd className="code-value">{payment.amount} USDC</dd>
           </div>
           <div>
+            <dt>Outer transaction target</dt>
+            <dd className="code-value">{MEMO_ADDRESS}</dd>
+          </div>
+          <div>
+            <dt>Memo schema</dt>
+            <dd className="code-value">arcshield-payment-receipt</dd>
+          </div>
+          <div>
+            <dt>URL hash</dt>
+            <dd className="code-value">{hashWebsite(payment.report.normalizedWebsite)}</dd>
+          </div>
+          <div>
             <dt>Risk level</dt>
             <dd>{payment.report.level}</dd>
           </div>
@@ -501,12 +641,25 @@ function PaymentDialog({
               {payment.report.codes.length > 0 ? payment.report.codes.join(", ") : "None"}
             </dd>
           </div>
+          <div>
+            <dt>Ruleset</dt>
+            <dd className="code-value">{RULESET_VERSION}</dd>
+          </div>
         </dl>
 
+        <p className="memo-disclosure">
+          The raw URL is not stored onchain, but a predictable URL hash may be guessable.
+        </p>
         <p className="disclaimer">ArcShield provides risk indicators, not a safety guarantee.</p>
 
         {submitting && (
-          <p className="submitting-status" role="status">
+          <p
+            className="submitting-status"
+            role="status"
+            aria-label="Submitting payment"
+            tabIndex={0}
+            data-submitting-focus
+          >
             <LoaderCircle className="spinner" aria-hidden="true" size={18} />
             Submitting payment...
           </p>
@@ -516,7 +669,7 @@ function PaymentDialog({
           <button
             className="secondary-button"
             type="button"
-            autoFocus
+            data-initial-focus
             disabled={submitting}
             onClick={onCancel}
           >
@@ -560,4 +713,14 @@ function errorMessage(error: unknown): string {
     return "You rejected the wallet request";
   }
   return error instanceof Error ? error.message : "Something went wrong. Please try again.";
+}
+
+function shortenAddress(account: `0x${string}`): string {
+  return `${account.slice(0, 6)}...${account.slice(-4)}`;
+}
+
+function unknownTransactionHash(error: unknown): `0x${string}` | undefined {
+  return error instanceof ArcShieldError && error.code === "TRANSACTION_STATUS_UNKNOWN"
+    ? error.transactionHash
+    : undefined;
 }
