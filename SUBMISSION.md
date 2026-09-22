@@ -82,7 +82,7 @@ Local verification:
 - [x] `npm test` passes in the submission commit (3 files, 66 tests).
 - [x] `npm run build` passes in the submission commit.
 - [x] `git diff --check` passes before commit.
-- [ ] Browser QA is completed against the final build.
+- [x] Browser QA completed locally at `1440x900` and `390x844`; low- and high-risk results rendered without overlap or horizontal overflow, and the browser console remained clear.
 
 External evidence:
 
