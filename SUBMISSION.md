@@ -30,11 +30,11 @@ ArcShield is a static React interface that checks an Arc recipient and optional 
 
 ## Repository URL
 
-- [ ] Add the verified public repository URL: `<PUBLIC_REPOSITORY_URL>`
+- [x] https://github.com/Cedric-uxb/arcshield
 
 ## Live URL
 
-- [ ] Add the verified public deployment URL: `<LIVE_DEMO_URL>`
+- [x] https://cedric-uxb.github.io/arcshield/
 
 ## Arc mainnet transaction URL
 
@@ -86,8 +86,8 @@ Local verification:
 
 External evidence:
 
-- [ ] Public repository opens without authentication.
-- [ ] Live deployment opens without authentication.
+- [x] Public repository opens without authentication.
+- [x] Live deployment opens without authentication.
 - [ ] Screenshots match the submitted build.
 - [ ] Arc mainnet transaction is successful and opens in the Arc explorer.
 - [ ] Repository URL, live URL, and transaction URL are copied into the DoraHacks fields.

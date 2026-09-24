@@ -2,6 +2,8 @@
 
 ArcShield is a local-first payment review interface for Arc. It helps a user inspect a recipient address and an optional associated website before preparing a USDC payment. The problem it addresses is that a wallet confirmation alone does not explain common address or URL warning signs.
 
+Live demo: https://cedric-uxb.github.io/arcshield/
+
 ArcShield reports deterministic indicators and stable reason codes. **It provides indicators, not a fraud or safety guarantee.** A low result only means that none of the implemented checks triggered.
 
 ## Implemented checks
@@ -90,4 +92,4 @@ npm run build
 - A high-risk warning can be overridden by the user; ArcShield does not block the wallet itself.
 - Only injected browser wallets using an EOA sender are supported. Smart contract wallets are not supported.
 - The optional website is analyzed only as a URL string. ArcShield does not visit or validate the site.
-- The app targets Arc mainnet, but this repository does not claim a completed mainnet transaction, public deployment, public repository, production readiness, award, or user traction.
+- The app targets Arc mainnet, but this repository does not claim a completed mainnet transaction, production readiness, award, or user traction.
