@@ -36,6 +36,10 @@ ArcShield is a static React interface that checks an Arc recipient and optional 
 
 - [x] https://cedric-uxb.github.io/arcshield/
 
+## DoraHacks BUIDL
+
+- [x] https://dorahacks.io/buidl/49122 (submitted; under review and not publicly visible yet)
+
 ## Arc mainnet transaction URL
 
 - [ ] Complete an approved Arc mainnet payment and add its explorer URL: `<ARC_MAINNET_TRANSACTION_URL>`
@@ -90,5 +94,5 @@ External evidence:
 - [x] Live deployment opens without authentication.
 - [ ] Screenshots match the submitted build.
 - [ ] Arc mainnet transaction is successful and opens in the Arc explorer.
-- [ ] Repository URL, live URL, and transaction URL are copied into the DoraHacks fields.
-- [ ] Final submission text contains no unverified production, award, traction, or safety claims.
+- [x] Repository URL, live URL, and the Arc Memo contract address are copied into the DoraHacks fields.
+- [x] Final submission text contains no unverified production, award, traction, or safety claims.
