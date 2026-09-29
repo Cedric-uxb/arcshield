@@ -53,7 +53,7 @@ ArcShield implements that proof path in a static React interface: deterministic 
 - [ ] Add a screenshot of the payment review dialog: `<SCREENSHOT_URL_OR_FILE>`
 - [ ] Add a screenshot of verified transaction success and the Arc explorer record: `<SCREENSHOT_URL_OR_FILE>`
 
-Both checked screenshots are local evidence matching implementation commit `765596a`. They do not establish parity with the current public deployment or a submitted BLI build: the public deployment is older, and ArcShield has not been submitted to BLI Legal Tech Hackathon 2.
+Both checked screenshots are refreshed local evidence matching implementation commit `26a1e17f64d60d64e7baddd709147fcafd3be165`. They do not establish parity with the current public deployment or a submitted BLI build: the public deployment is older, and ArcShield has not been submitted to BLI Legal Tech Hackathon 2.
 
 ## Demo steps
 
@@ -86,11 +86,11 @@ Do not perform step 5 with real funds until the exact transaction has been revie
 
 Local verification:
 
-- [x] `npm test` passes at implementation commit `765596a`.
-- [x] `npm run build` passes at implementation commit `765596a`.
+- [x] `npm test` passes at implementation commit `26a1e17f64d60d64e7baddd709147fcafd3be165`.
+- [x] `npm run build` passes at implementation commit `26a1e17f64d60d64e7baddd709147fcafd3be165`.
 - [x] `git diff --check` passes before commit.
 - [x] Browser QA completed locally at `1440x900` and `390x844`; low- and high-risk results rendered without overlap or horizontal overflow, and the browser console remained clear.
-- [x] Local desktop and responsive mobile high-risk screenshots match implementation commit `765596a`.
+- [x] Refreshed local desktop and responsive mobile high-risk screenshots match implementation commit `26a1e17f64d60d64e7baddd709147fcafd3be165`.
 
 External evidence:
 
