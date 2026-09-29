@@ -1,10 +1,17 @@
 # ArcShield
 
-ArcShield is a local-first payment review interface for Arc. It helps a user inspect a recipient address and an optional associated website before preparing a USDC payment. The problem it addresses is that a wallet confirmation alone does not explain common address or URL warning signs.
+ArcShield is a pre-payment compliance evidence layer for Arc USDC transfers. It runs deterministic recipient and URL checks, explains every finding, requires explicit acknowledgement for high-risk payments, and prepares a privacy-preserving Arc Memo record for the reviewed decision.
 
 Live demo: https://cedric-uxb.github.io/arcshield/
 
 ArcShield reports deterministic indicators and stable reason codes. **It provides indicators, not a fraud or safety guarantee.** A low result only means that none of the implemented checks triggered.
+
+## Judge demo
+
+1. Select **Load low-indicator example**, then **Run risk check** to see a clean evidence summary.
+2. Select **Load high-risk example**, then **Run risk check** to see explicit warning codes and the required **I understand the risk** acknowledgement.
+3. Open **Review payment** only when using a compatible wallet; no wallet is required for steps 1-2.
+4. Treat the explorer receipt as available only after a real confirmed Arc payment.
 
 ## Implemented checks
 

@@ -8,15 +8,15 @@ ArcShield
 
 ## Tagline
 
-Explainable risk indicators before an Arc USDC payment.
+Explainable compliance evidence before an Arc USDC payment.
 
 ## Problem
 
-A wallet confirmation shows transaction parameters but does not explain common warning signs in a recipient address or an associated payment URL. Users need a concise review step that makes deterministic checks visible before they decide whether to sign.
+An Arc USDC payment can reach wallet confirmation without a concise evidence trail explaining common warning signs in the recipient address or associated payment URL. BLI LegalTech/RegTech reviewers need a transparent pre-payment compliance step that shows what was checked, what a human reviewed, and what was acknowledged before signing.
 
 ## Solution
 
-ArcShield is a static React interface that checks an Arc recipient and optional website, displays stable reason codes and severity, and prepares a reviewed USDC payment. High-risk results require an explicit override. ArcShield provides indicators, not a fraud or safety guarantee.
+ArcShield implements that proof path in a static React interface: deterministic recipient and URL checks produce stable reason codes, a human reviews the evidence, and high-risk payments require explicit acknowledgement. If the user proceeds, ArcShield prepares a wallet-approved Arc Memo call with privacy-preserving metadata containing the normalized URL hash, risk level, reason codes, and ruleset version rather than the raw URL. An explorer receipt is available only after the user confirms the payment and Arc confirms the transaction. This auditable, human-in-the-loop evidence flow is the project's BLI LegalTech/RegTech fit. ArcShield provides indicators, not a fraud or safety guarantee.
 
 ## Arc usage
 
@@ -38,7 +38,8 @@ ArcShield is a static React interface that checks an Arc recipient and optional 
 
 ## DoraHacks BUIDL
 
-- [x] https://dorahacks.io/buidl/49122 (submitted; under review and not publicly visible yet)
+- [x] Public BUIDL profile: https://dorahacks.io/buidl/49122
+- [ ] Submit the existing ArcShield BUIDL to BLI Legal Tech Hackathon 2. The event page still shows `Submit BUIDL`, and ArcShield is not in the event's submitted BUIDL list.
 
 ## Arc mainnet transaction URL
 
@@ -54,13 +55,12 @@ ArcShield is a static React interface that checks an Arc recipient and optional 
 ## Demo steps
 
 1. Open the verified live URL or run `npm ci` and `npm run dev` locally.
-2. Enter a recipient address, positive USDC amount with at most 6 decimal places, and an optional associated website.
-3. Run the risk check and review the level, normalized recipient, and reason codes.
-4. For a high result, acknowledge the warning explicitly before continuing.
-5. Select **Review payment**, connect an injected browser wallet, and verify sender, recipient, amount, network, and risk indicators.
-6. For a funded, approved demonstration, confirm in the wallet and open the successful transaction in the Arc explorer.
+2. Select **Load low-indicator example**, then **Run risk check** to review the clean evidence summary.
+3. Select **Load high-risk example**, then **Run risk check** to review the explicit warning codes and required **I understand the risk** acknowledgement. No wallet is required for steps 2-3.
+4. Select **Review payment** only with a compatible injected browser wallet, then verify the sender, recipient, amount, network, and risk indicators.
+5. For a funded, approved demonstration, confirm the payment in the wallet. Treat the explorer receipt as available only after Arc confirms the transaction.
 
-Do not perform step 6 with real funds until the exact transaction has been reviewed and approved.
+Do not perform step 5 with real funds until the exact transaction has been reviewed and approved.
 
 ## Tech stack
 
@@ -94,5 +94,6 @@ External evidence:
 - [x] Live deployment opens without authentication.
 - [ ] Screenshots match the submitted build.
 - [ ] Arc mainnet transaction is successful and opens in the Arc explorer.
-- [x] Repository URL, live URL, and the Arc Memo contract address are copied into the DoraHacks fields.
+- [x] Repository URL, live URL, and the Arc Memo contract address are saved in the ArcShield BUIDL profile.
+- [ ] ArcShield is attached and submitted to BLI Legal Tech Hackathon 2.
 - [x] Final submission text contains no unverified production, award, traction, or safety claims.
