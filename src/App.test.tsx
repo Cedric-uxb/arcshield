@@ -128,6 +128,33 @@ describe("App", () => {
     expect(button).toHaveAttribute("type", "submit");
   });
 
+  it("loads the low-indicator example without running a risk check", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Load low-indicator example" }));
+
+    expect(screen.getByLabelText("Recipient address")).toHaveValue(recipient);
+    expect(screen.getByLabelText("Amount in USDC")).toHaveValue("25");
+    expect(screen.getByLabelText("Associated website (optional)")).toHaveValue(
+      "https://merchant.example",
+    );
+    expect(arc.inspectRecipient).not.toHaveBeenCalled();
+    expect(screen.getByText("Not checked")).toBeInTheDocument();
+    expect(screen.queryByText("ADDRESS_ZERO")).not.toBeInTheDocument();
+  });
+
+  it("runs the normal risk check for the high-risk example", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Load high-risk example" }));
+    await user.click(screen.getByRole("button", { name: "Run risk check" }));
+
+    expect(await screen.findByText("ADDRESS_ZERO")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "I understand the risk" })).toBeInTheDocument();
+  });
+
   it("verifies Arc Mainnet after the header wallet connects", async () => {
     render(<App />);
     const user = userEvent.setup();

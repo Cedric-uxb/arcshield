@@ -60,6 +60,18 @@ type FlowState =
   | { stage: "error"; message: string };
 
 const AMOUNT_ERROR = "Enter a positive USDC amount with up to 6 decimal places";
+const DEMO_PRESETS = {
+  low: {
+    recipient: "0x2222222222222222222222222222222222222222",
+    amount: "25",
+    website: "https://merchant.example",
+  },
+  high: {
+    recipient: "0x0000000000000000000000000000000000000000",
+    amount: "25",
+    website: "http://198.51.100.42/login",
+  },
+} as const;
 
 export default function App() {
   const [recipient, setRecipient] = useState("");
@@ -91,6 +103,18 @@ export default function App() {
   const invalidateReport = () => {
     if (paymentLocked) return;
     requestVersion.current += 1;
+    setFlow({ stage: "editing" });
+    setRiskAccepted(false);
+  };
+
+  const loadDemoPreset = (
+    preset: (typeof DEMO_PRESETS)[keyof typeof DEMO_PRESETS],
+  ) => {
+    if (paymentLocked) return;
+    requestVersion.current += 1;
+    setRecipient(preset.recipient);
+    setAmount(preset.amount);
+    setWebsite(preset.website);
     setFlow({ stage: "editing" });
     setRiskAccepted(false);
   };
@@ -415,6 +439,27 @@ export default function App() {
             </div>
 
             <form noValidate onSubmit={submitRiskCheck}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={paymentLocked}
+                  style={{ flex: "1 1 12rem", minHeight: "2.25rem", padding: "0.375rem 0.75rem" }}
+                  onClick={() => loadDemoPreset(DEMO_PRESETS.low)}
+                >
+                  Load low-indicator example
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={paymentLocked}
+                  style={{ flex: "1 1 12rem", minHeight: "2.25rem", padding: "0.375rem 0.75rem" }}
+                  onClick={() => loadDemoPreset(DEMO_PRESETS.high)}
+                >
+                  Load high-risk example
+                </button>
+              </div>
+
               <label>
                 Recipient address
                 <input
