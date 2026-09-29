@@ -16,7 +16,7 @@ An Arc USDC payment can reach wallet confirmation without a concise evidence tra
 
 ## Solution
 
-ArcShield implements that proof path in a static React interface: deterministic recipient and URL checks produce stable reason codes, a human reviews the evidence, and high-risk payments require explicit acknowledgement. If the user proceeds, ArcShield prepares a wallet-approved Arc Memo call with privacy-preserving metadata containing the normalized URL hash, risk level, reason codes, and ruleset version rather than the raw URL. An explorer receipt is available only after the user confirms the payment and Arc confirms the transaction. This auditable, human-in-the-loop evidence flow is the project's BLI LegalTech/RegTech fit. ArcShield provides indicators, not a fraud or safety guarantee.
+ArcShield implements that proof path in a static React interface: deterministic recipient and URL checks produce stable reason codes, a human reviews the evidence, and high-risk payments require explicit acknowledgement. If the user proceeds, ArcShield prepares a wallet-approved Arc Memo call whose public metadata omits the raw URL and records only its normalized URL hash, risk level, reason codes, and ruleset version. An explorer receipt is available only after the user confirms the payment and Arc confirms the transaction. This auditable, human-in-the-loop evidence flow is the project's BLI LegalTech/RegTech fit. ArcShield provides indicators, not a fraud or safety guarantee.
 
 ## Arc usage
 
@@ -77,14 +77,14 @@ Do not perform step 5 with real funds until the exact transaction has been revie
 - EOA senders only; smart contract wallets are rejected before simulation.
 - Requires an injected EIP-1193 browser wallet and the configured Arc RPC.
 - High-risk results can be overridden after explicit acknowledgement.
-- Current evidence is limited to local automated tests and a local production build until the external checklist below is completed.
+- Functional verification includes automated tests, a production build, and public deployment availability. Screenshots and Arc mainnet transaction proof remain outstanding.
 
 ## Evidence checklist
 
 Local verification:
 
-- [x] `npm test` passes at the recorded submission commit.
-- [x] `npm run build` passes in the submission commit.
+- [x] `npm test` passes at implementation commit `765596a`.
+- [x] `npm run build` passes at implementation commit `765596a`.
 - [x] `git diff --check` passes before commit.
 - [x] Browser QA completed locally at `1440x900` and `390x844`; low- and high-risk results rendered without overlap or horizontal overflow, and the browser console remained clear.
 
@@ -94,6 +94,7 @@ External evidence:
 - [x] Live deployment opens without authentication.
 - [ ] Screenshots match the submitted build.
 - [ ] Arc mainnet transaction is successful and opens in the Arc explorer.
-- [x] Repository URL, live URL, and the Arc Memo contract address are saved in the ArcShield BUIDL profile.
+- [x] Repository URL, live URL, and the Arc Memo integration description are saved in the ArcShield BUIDL profile.
+- [ ] Add and verify the exact Arc Memo contract address in the public BUIDL profile before final submission.
 - [ ] ArcShield is attached and submitted to BLI Legal Tech Hackathon 2.
 - [x] Final submission text contains no unverified production, award, traction, or safety claims.
