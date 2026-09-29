@@ -575,15 +575,15 @@ export default function App() {
                 <EvidenceGroup
                   title="Address evidence"
                   findings={groupedFindings.address}
-                  empty="No address findings detected."
+                  empty="Bytecode and USDC denylist checks found no warnings. Sender matching remains pending until wallet connection."
                 />
                 <EvidenceGroup
                   title="Website evidence"
                   findings={groupedFindings.website}
                   empty={
                     payment.website.trim()
-                      ? "No website findings detected."
-                      : "No website provided."
+                      ? "No website structure findings were found."
+                      : "No website was supplied for structure checks."
                   }
                 />
 

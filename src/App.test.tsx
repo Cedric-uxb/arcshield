@@ -300,8 +300,35 @@ describe("App", () => {
     await enterPayment({ recipientAddress: "not-an-address" });
 
     expect(await screen.findByText("ADDRESS_INVALID")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Risk result" })).toHaveTextContent(
+      "Onchain reads require a valid recipient.",
+    );
     expect(screen.queryByRole("button", { name: "Review payment" })).not.toBeInTheDocument();
     expect(arc.inspectRecipient).not.toHaveBeenCalled();
+  });
+
+  it("keeps sender matching pending until a wallet connects", async () => {
+    render(<App />);
+
+    await enterPayment({ website: "https://example.com" });
+    await screen.findByRole("button", { name: "Review payment" });
+
+    const result = screen.getByRole("region", { name: "Risk result" });
+    expect(result).toHaveTextContent(
+      "Bytecode and USDC denylist checks found no warnings. Sender matching remains pending until wallet connection.",
+    );
+    expect(result).toHaveTextContent("No website structure findings were found.");
+  });
+
+  it("reports that an omitted website was not checked", async () => {
+    render(<App />);
+
+    await enterPayment();
+    await screen.findByRole("button", { name: "Review payment" });
+
+    expect(screen.getByRole("region", { name: "Risk result" })).toHaveTextContent(
+      "No website was supplied for structure checks.",
+    );
   });
 
   it("renders contract and insecure website warning reasons", async () => {
@@ -325,11 +352,14 @@ describe("App", () => {
   it("describes the proof path without claiming an explorer receipt exists", () => {
     render(<App />);
 
-    expect(screen.getByText("Deterministic checks")).toBeInTheDocument();
-    expect(screen.getByText("Wallet review")).toBeInTheDocument();
-    expect(screen.getByText("Arc Memo record")).toBeInTheDocument();
-    expect(screen.getByText("Explorer receipt")).toBeInTheDocument();
-    expect(screen.getByText("Available after a confirmed payment")).toBeInTheDocument();
+    const trail = screen.getByRole("region", { name: "Decision trail" });
+    expect(within(trail).getByText("Deterministic checks")).toBeInTheDocument();
+    expect(within(trail).getByText("Wallet review")).toBeInTheDocument();
+    expect(within(trail).getByText("Arc Memo record")).toBeInTheDocument();
+    expect(within(trail).getByText("Explorer receipt")).toBeInTheDocument();
+    expect(within(trail).getByText("Available after a confirmed payment")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByText(transactionHash)).not.toBeInTheDocument();
   });
 
   it("submits a malformed website for explicit URL_INVALID analysis", async () => {
