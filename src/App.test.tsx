@@ -155,6 +155,24 @@ describe("App", () => {
     expect(screen.getByRole("checkbox", { name: "I understand the risk" })).toBeInTheDocument();
   });
 
+  it("clears a completed high-risk result and accepted risk when loading a preset", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Load high-risk example" }));
+    await user.click(screen.getByRole("button", { name: "Run risk check" }));
+    const override = await screen.findByRole("checkbox", { name: "I understand the risk" });
+    await user.click(override);
+    expect(override).toBeChecked();
+
+    await user.click(screen.getByRole("button", { name: "Load low-indicator example" }));
+
+    expect(screen.getByText("Not checked")).toBeInTheDocument();
+    expect(screen.queryByText("ADDRESS_ZERO")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "I understand the risk" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Review payment" })).not.toBeInTheDocument();
+  });
+
   it("verifies Arc Mainnet after the header wallet connects", async () => {
     render(<App />);
     const user = userEvent.setup();
@@ -346,6 +364,29 @@ describe("App", () => {
     expect(screen.queryByText("ADDRESS_DENYLISTED")).not.toBeInTheDocument();
     expect(arc.inspectRecipient).toHaveBeenNthCalledWith(1, recipient);
     expect(arc.inspectRecipient).toHaveBeenNthCalledWith(2, secondRecipient);
+  });
+
+  it("keeps a loaded preset when a superseded inspection resolves", async () => {
+    const inspection = deferred<{ hasCode: boolean; denylisted: boolean }>();
+    arc.inspectRecipient.mockReturnValueOnce(inspection.promise);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Recipient address"), secondRecipient);
+    await user.type(screen.getByLabelText("Amount in USDC"), "1.25");
+    await user.click(screen.getByRole("button", { name: "Run risk check" }));
+    await waitFor(() => expect(arc.inspectRecipient).toHaveBeenCalledWith(secondRecipient));
+
+    await user.click(screen.getByRole("button", { name: "Load low-indicator example" }));
+    await act(async () => inspection.resolve({ hasCode: true, denylisted: true }));
+
+    expect(screen.getByLabelText("Recipient address")).toHaveValue(recipient);
+    expect(screen.getByLabelText("Amount in USDC")).toHaveValue("25");
+    expect(screen.getByLabelText("Associated website (optional)")).toHaveValue(
+      "https://merchant.example",
+    );
+    expect(screen.getByText("Not checked")).toBeInTheDocument();
+    expect(screen.queryByText("ADDRESS_CONTRACT")).not.toBeInTheDocument();
+    expect(screen.queryByText("ADDRESS_DENYLISTED")).not.toBeInTheDocument();
   });
 
   it("shows the complete Arc payment review", async () => {
@@ -582,6 +623,8 @@ describe("App", () => {
     expect(screen.getByLabelText("Recipient address")).toBeDisabled();
     expect(screen.getByLabelText("Amount in USDC")).toBeDisabled();
     expect(screen.getByLabelText("Associated website (optional)")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Load low-indicator example" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Load high-risk example" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Run risk check" })).toBeDisabled();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "Payment review" })).not.toBeInTheDocument();
