@@ -54,7 +54,7 @@ ArcShield implements that proof path in a static React interface: deterministic 
 
 ## Demo steps
 
-1. Open the verified live URL or run `npm ci` and `npm run dev` locally.
+1. Open the live URL and verify that it contains the **Load low-indicator example** and **Load high-risk example** controls. If either control is missing, run the current branch locally with `npm ci` and `npm run dev`.
 2. Select **Load low-indicator example**, then **Run risk check** to review the clean evidence summary.
 3. Select **Load high-risk example**, then **Run risk check** to review the explicit warning codes and required **I understand the risk** acknowledgement. No wallet is required for steps 2-3.
 4. Select **Review payment** only with a compatible injected browser wallet, then verify the sender, recipient, amount, network, and risk indicators.
