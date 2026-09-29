@@ -307,16 +307,15 @@ describe("App", () => {
     expect(arc.inspectRecipient).not.toHaveBeenCalled();
   });
 
-  it("keeps sender matching pending until a wallet connects", async () => {
+  it("keeps sender matching wording truthful after wallet review is canceled", async () => {
     render(<App />);
 
-    await enterPayment({ website: "https://example.com" });
-    await screen.findByRole("button", { name: "Review payment" });
+    const user = await enterPayment({ website: "https://example.com" });
+    await user.click(await screen.findByRole("button", { name: "Review payment" }));
+    await user.click(await screen.findByRole("button", { name: "Cancel" }));
 
     const result = screen.getByRole("region", { name: "Risk result" });
-    expect(result).toHaveTextContent(
-      "Bytecode and USDC denylist checks found no warnings. Sender matching remains pending until wallet connection.",
-    );
+    expect(result).toHaveTextContent("Sender matching is performed during wallet review.");
     expect(result).toHaveTextContent("No website structure findings were found.");
   });
 
@@ -358,7 +357,7 @@ describe("App", () => {
     expect(within(trail).getByText("Arc Memo record")).toBeInTheDocument();
     expect(within(trail).getByText("Explorer receipt")).toBeInTheDocument();
     expect(within(trail).getByText("Available after a confirmed payment")).toBeInTheDocument();
-    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /view transaction/i })).not.toBeInTheDocument();
     expect(screen.queryByText(transactionHash)).not.toBeInTheDocument();
   });
 

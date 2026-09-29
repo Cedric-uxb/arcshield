@@ -575,7 +575,7 @@ export default function App() {
                 <EvidenceGroup
                   title="Address evidence"
                   findings={groupedFindings.address}
-                  empty="Bytecode and USDC denylist checks found no warnings. Sender matching remains pending until wallet connection."
+                  empty="Bytecode and USDC denylist checks found no warnings. Sender matching is performed during wallet review."
                 />
                 <EvidenceGroup
                   title="Website evidence"
