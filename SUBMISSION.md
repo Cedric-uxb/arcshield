@@ -48,9 +48,12 @@ ArcShield implements that proof path in a static React interface: deterministic 
 ## Screenshots
 
 - [ ] Add a screenshot of the payment input and low/warning result: `<SCREENSHOT_URL_OR_FILE>`
-- [ ] Add a screenshot showing a high-risk result and explicit override: `<SCREENSHOT_URL_OR_FILE>`
+- [x] High-risk result and explicit override (desktop): [docs/images/arcshield-bli-desktop.png](docs/images/arcshield-bli-desktop.png)
+- [x] Responsive mobile high-risk result and explicit override: [docs/images/arcshield-bli-mobile.png](docs/images/arcshield-bli-mobile.png)
 - [ ] Add a screenshot of the payment review dialog: `<SCREENSHOT_URL_OR_FILE>`
 - [ ] Add a screenshot of verified transaction success and the Arc explorer record: `<SCREENSHOT_URL_OR_FILE>`
+
+Both checked screenshots are local evidence matching implementation commit `765596a`. They do not establish parity with the current public deployment or a submitted BLI build: the public deployment is older, and ArcShield has not been submitted to BLI Legal Tech Hackathon 2.
 
 ## Demo steps
 
@@ -77,7 +80,7 @@ Do not perform step 5 with real funds until the exact transaction has been revie
 - EOA senders only; smart contract wallets are rejected before simulation.
 - Requires an injected EIP-1193 browser wallet and the configured Arc RPC.
 - High-risk results can be overridden after explicit acknowledgement.
-- Functional verification includes automated tests, a production build, and public deployment availability. Screenshots and Arc mainnet transaction proof remain outstanding.
+- Functional verification includes automated tests, a production build, and public deployment availability. Local high-risk desktop and mobile screenshots are captured; public deployment parity, submitted-build screenshot proof, and Arc mainnet transaction proof remain outstanding.
 
 ## Evidence checklist
 
@@ -87,6 +90,7 @@ Local verification:
 - [x] `npm run build` passes at implementation commit `765596a`.
 - [x] `git diff --check` passes before commit.
 - [x] Browser QA completed locally at `1440x900` and `390x844`; low- and high-risk results rendered without overlap or horizontal overflow, and the browser console remained clear.
+- [x] Local desktop and responsive mobile high-risk screenshots match implementation commit `765596a`.
 
 External evidence:
 
