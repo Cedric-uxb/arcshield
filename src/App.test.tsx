@@ -152,6 +152,20 @@ describe("App", () => {
     expect(screen.queryByText("ADDRESS_ZERO")).not.toBeInTheDocument();
   });
 
+  it("runs the low-indicator example without high-risk findings", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Load low-indicator example" }));
+    await user.click(screen.getByRole("button", { name: "Run risk check" }));
+
+    const result = await screen.findByRole("region", { name: "Risk result" });
+    expect(within(result).getByText("low")).toBeInTheDocument();
+    expect(within(result).queryByText("ADDRESS_ZERO")).not.toBeInTheDocument();
+    expect(within(result).queryByText("URL_NO_HTTPS")).not.toBeInTheDocument();
+    expect(within(result).queryByText("URL_IP_HOST")).not.toBeInTheDocument();
+  });
+
   it("runs the normal risk check for the high-risk example", async () => {
     render(<App />);
     const user = userEvent.setup();
@@ -348,15 +362,22 @@ describe("App", () => {
     expect(within(result).getByText("URL_NO_HTTPS")).toBeInTheDocument();
   });
 
-  it("describes the proof path without claiming an explorer receipt exists", () => {
+  it("describes the neutral evidence path without claiming completion", () => {
     render(<App />);
 
-    const trail = screen.getByRole("region", { name: "Decision trail" });
-    expect(within(trail).getByText("Deterministic checks")).toBeInTheDocument();
-    expect(within(trail).getByText("Wallet review")).toBeInTheDocument();
-    expect(within(trail).getByText("Arc Memo record")).toBeInTheDocument();
-    expect(within(trail).getByText("Explorer receipt")).toBeInTheDocument();
-    expect(within(trail).getByText("Available after a confirmed payment")).toBeInTheDocument();
+    const path = screen.getByRole("region", { name: "Evidence path" });
+    const expectedStages = [
+      ["Deterministic checks", "Runs before wallet review"],
+      ["Wallet review", "Requires wallet connection"],
+      ["Arc Memo record", "Created only with a confirmed payment"],
+      ["Explorer receipt", "Available after a confirmed payment"],
+    ] as const;
+
+    expectedStages.forEach(([heading, caption]) => {
+      const stage = within(path).getByRole("heading", { level: 3, name: heading }).closest("li");
+      expect(stage).not.toBeNull();
+      expect(within(stage as HTMLElement).getByText(caption, { selector: "p" })).toBeInTheDocument();
+    });
     expect(screen.queryByRole("link", { name: /view transaction/i })).not.toBeInTheDocument();
     expect(screen.queryByText(transactionHash)).not.toBeInTheDocument();
   });

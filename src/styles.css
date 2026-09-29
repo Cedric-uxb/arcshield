@@ -743,15 +743,7 @@ a:focus-visible,
 }
 
 .proof-strip li svg {
-  color: var(--green);
-}
-
-.proof-strip li:last-child svg {
-  color: var(--blue);
-}
-
-.proof-strip li:first-child svg {
-  color: var(--ink);
+  color: var(--muted);
 }
 
 .proof-strip h3 {

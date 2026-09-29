@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   CircleCheck,
   ExternalLink,
+  FileText,
   LoaderCircle,
   Search,
   ShieldCheck,
@@ -718,27 +719,27 @@ export default function App() {
         </div>
 
         <section className="proof-strip" aria-labelledby="proof-strip-title">
-          <h2 id="proof-strip-title">Decision trail</h2>
+          <h2 id="proof-strip-title">Evidence path</h2>
           <ol>
             <li>
               <Search aria-hidden="true" size={18} />
               <div>
                 <h3>Deterministic checks</h3>
-                <p>Address and URL evidence</p>
+                <p>Runs before wallet review</p>
               </div>
             </li>
             <li>
               <Wallet aria-hidden="true" size={18} />
               <div>
                 <h3>Wallet review</h3>
-                <p>Human confirmation before payment</p>
+                <p>Requires wallet connection</p>
               </div>
             </li>
             <li>
-              <ShieldCheck aria-hidden="true" size={18} />
+              <FileText aria-hidden="true" size={18} />
               <div>
                 <h3>Arc Memo record</h3>
-                <p>Ruleset and decision data</p>
+                <p>Created only with a confirmed payment</p>
               </div>
             </li>
             <li>
