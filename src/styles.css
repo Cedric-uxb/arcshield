@@ -856,6 +856,10 @@ a:focus-visible,
     align-items: center;
   }
 
+  .status-message a {
+    min-height: 2.75rem;
+  }
+
   form > div:first-child .secondary-button {
     min-height: 2.75rem !important;
   }
