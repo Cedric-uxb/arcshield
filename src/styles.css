@@ -406,7 +406,7 @@ input:focus-visible,
 button:focus-visible,
 a:focus-visible,
 .submitting-status:focus-visible {
-  outline: 3px solid rgb(20 108 67 / 34%);
+  outline: 3px solid var(--blue);
   outline-offset: 2px;
 }
 
