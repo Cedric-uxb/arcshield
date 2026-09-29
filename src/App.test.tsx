@@ -121,6 +121,11 @@ describe("App", () => {
     expect(screen.getByText("Inspect")).toBeInTheDocument();
     expect(screen.getByText("Review")).toBeInTheDocument();
     expect(screen.getByText("Record")).toBeInTheDocument();
+    const complianceFlow = screen.getByRole("list", { name: "Compliance payment flow" });
+    const recordStage = within(complianceFlow).getByText("Record").closest("li");
+    expect(recordStage).not.toBeNull();
+    expect(recordStage?.querySelector(".lucide-file-text")).toBeInTheDocument();
+    expect(recordStage?.querySelector(".lucide-circle-check")).not.toBeInTheDocument();
     expect(screen.getByText("Recipient bytecode")).toBeInTheDocument();
     expect(screen.getByText("USDC denylist status")).toBeInTheDocument();
     expect(screen.getByText("URL structure")).toBeInTheDocument();
@@ -161,6 +166,7 @@ describe("App", () => {
 
     const result = await screen.findByRole("region", { name: "Risk result" });
     expect(within(result).getByText("low")).toBeInTheDocument();
+    expect(arc.inspectRecipient).toHaveBeenCalledWith(recipient);
     expect(within(result).queryByText("ADDRESS_ZERO")).not.toBeInTheDocument();
     expect(within(result).queryByText("URL_NO_HTTPS")).not.toBeInTheDocument();
     expect(within(result).queryByText("URL_IP_HOST")).not.toBeInTheDocument();

@@ -441,7 +441,7 @@ export default function App() {
               <strong>Review</strong>
             </li>
             <li>
-              <CircleCheck aria-hidden="true" size={16} />
+              <FileText aria-hidden="true" size={16} />
               <strong>Record</strong>
             </li>
           </ol>

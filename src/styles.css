@@ -261,16 +261,8 @@ a {
   border-left: 1px solid var(--line);
 }
 
-.process-steps li:first-child svg {
-  color: var(--ink);
-}
-
-.process-steps li:nth-child(2) svg {
-  color: var(--amber);
-}
-
-.process-steps li:last-child svg {
-  color: var(--green);
+.process-steps li svg {
+  color: var(--muted);
 }
 
 .workspace-grid {
