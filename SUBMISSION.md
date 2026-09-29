@@ -39,7 +39,7 @@ ArcShield implements that proof path in a static React interface: deterministic 
 ## DoraHacks BUIDL
 
 - [x] Public BUIDL profile: https://dorahacks.io/buidl/49122
-- [ ] Submit the existing ArcShield BUIDL to BLI Legal Tech Hackathon 2. The event page still shows `Submit BUIDL`, and ArcShield is not in the event's submitted BUIDL list.
+- [ ] Submit the existing ArcShield BUIDL to BLI Legal Tech Hackathon 2. The event page still shows `Submit BUIDL`, and ArcShield is not in the event's [submitted BUIDL list](https://dorahacks.io/hackathon/legal-hack-2026/buidl).
 
 ## Arc mainnet transaction URL
 
@@ -48,8 +48,8 @@ ArcShield implements that proof path in a static React interface: deterministic 
 ## Screenshots
 
 - [ ] Add a screenshot of the payment input and low/warning result: `<SCREENSHOT_URL_OR_FILE>`
-- [x] High-risk result and explicit override (desktop): [docs/images/arcshield-bli-desktop.png](docs/images/arcshield-bli-desktop.png)
-- [x] Responsive mobile high-risk result and explicit override: [docs/images/arcshield-bli-mobile.png](docs/images/arcshield-bli-mobile.png)
+- [x] Desktop high-risk result with the explicit risk-acknowledgement control shown but not accepted and the payment action disabled: [docs/images/arcshield-bli-desktop.png](docs/images/arcshield-bli-desktop.png)
+- [x] Responsive mobile high-risk result with the explicit risk-acknowledgement control shown but not accepted and the payment action disabled: [docs/images/arcshield-bli-mobile.png](docs/images/arcshield-bli-mobile.png)
 - [ ] Add a screenshot of the payment review dialog: `<SCREENSHOT_URL_OR_FILE>`
 - [ ] Add a screenshot of verified transaction success and the Arc explorer record: `<SCREENSHOT_URL_OR_FILE>`
 
@@ -96,6 +96,7 @@ External evidence:
 
 - [x] Public repository opens without authentication.
 - [x] Live deployment opens without authentication.
+- [ ] Push or merge the reviewed revision to the public repository, confirm GitHub Pages deployed from that same revision, then verify the preset controls and screenshot links against the public build.
 - [ ] Screenshots match the submitted build.
 - [ ] Arc mainnet transaction is successful and opens in the Arc explorer.
 - [x] Repository URL, live URL, and the Arc Memo integration description are saved in the ArcShield BUIDL profile.
