@@ -115,7 +115,15 @@ beforeEach(() => {
 describe("App", () => {
   it("renders the working payment-check form", () => {
     render(<App />);
-    expect(screen.getByRole("heading", { name: "Check before you pay" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Review the evidence before you pay" }),
+    ).toHaveTextContent(/^Review the evidence before you pay$/);
+    expect(screen.getByText("Inspect")).toBeInTheDocument();
+    expect(screen.getByText("Review")).toBeInTheDocument();
+    expect(screen.getByText("Record")).toBeInTheDocument();
+    expect(screen.getByText("Recipient bytecode")).toBeInTheDocument();
+    expect(screen.getByText("USDC denylist status")).toBeInTheDocument();
+    expect(screen.getByText("URL structure")).toBeInTheDocument();
     expect(screen.getByLabelText("Recipient address")).toBeInTheDocument();
     expect(screen.getByLabelText("Amount in USDC")).toBeInTheDocument();
     expect(screen.getByLabelText("Associated website (optional)")).toBeInTheDocument();
@@ -306,7 +314,22 @@ describe("App", () => {
     const result = screen.getByRole("region", { name: "Risk result" });
     expect(result).toHaveAttribute("aria-live", "polite");
     expect(result).toHaveClass("risk-warning");
-    expect(screen.getByText("URL_NO_HTTPS")).toBeInTheDocument();
+    expect(within(result).getByText("Address evidence")).toBeInTheDocument();
+    expect(within(result).getByText("Website evidence")).toBeInTheDocument();
+    expect(within(result).getByText("Arc verification")).toBeInTheDocument();
+    expect(within(result).getByText(RULESET_VERSION)).toBeInTheDocument();
+    expect(within(result).getByText("ADDRESS_CONTRACT")).toBeInTheDocument();
+    expect(within(result).getByText("URL_NO_HTTPS")).toBeInTheDocument();
+  });
+
+  it("describes the proof path without claiming an explorer receipt exists", () => {
+    render(<App />);
+
+    expect(screen.getByText("Deterministic checks")).toBeInTheDocument();
+    expect(screen.getByText("Wallet review")).toBeInTheDocument();
+    expect(screen.getByText("Arc Memo record")).toBeInTheDocument();
+    expect(screen.getByText("Explorer receipt")).toBeInTheDocument();
+    expect(screen.getByText("Available after a confirmed payment")).toBeInTheDocument();
   });
 
   it("submits a malformed website for explicit URL_INVALID analysis", async () => {

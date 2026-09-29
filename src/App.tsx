@@ -8,7 +8,7 @@ import {
   TriangleAlert,
   Wallet,
 } from "lucide-react";
-import { analyzePayment, type RiskReport } from "./core/risk";
+import { analyzePayment, type RiskFinding, type RiskReport } from "./core/risk";
 import {
   ARC_CHAIN_ID,
   ARC_EXPLORER_URL,
@@ -362,6 +362,7 @@ export default function App() {
   const RiskIcon = payment?.report.level === "low" ? CircleCheck : TriangleAlert;
   const broadcastStatus =
     flow.stage === "pending" ? BROADCAST_STATUS[flow.outcome] : undefined;
+  const groupedFindings = groupFindings(payment?.report.findings ?? []);
 
   return (
     <>
@@ -370,6 +371,7 @@ export default function App() {
           <div className="brand">
             <ShieldCheck aria-hidden="true" size={22} />
             <strong>ArcShield</strong>
+            <small>USDC compliance</small>
           </div>
           <div className="header-controls">
             <span
@@ -426,7 +428,22 @@ export default function App() {
 
         <main className="app-shell">
         <div className="page-heading">
-          <h1>Check before you pay</h1>
+          <h1>Review the evidence before you pay</h1>
+          <p>Explainable checks and an Arc-recorded decision trail for USDC payments.</p>
+          <ol className="process-steps" aria-label="Compliance payment flow">
+            <li>
+              <Search aria-hidden="true" size={16} />
+              <strong>Inspect</strong>
+            </li>
+            <li>
+              <TriangleAlert aria-hidden="true" size={16} />
+              <strong>Review</strong>
+            </li>
+            <li>
+              <CircleCheck aria-hidden="true" size={16} />
+              <strong>Record</strong>
+            </li>
+          </ol>
         </div>
 
         <div className="workspace-grid">
@@ -555,17 +572,31 @@ export default function App() {
                   </div>
                 </dl>
 
+                <EvidenceGroup
+                  title="Address evidence"
+                  findings={groupedFindings.address}
+                  empty="No address findings detected."
+                />
+                <EvidenceGroup
+                  title="Website evidence"
+                  findings={groupedFindings.website}
+                  empty={
+                    payment.website.trim()
+                      ? "No website findings detected."
+                      : "No website provided."
+                  }
+                />
+
                 <div className="reason-block">
-                  <h3>Reason codes</h3>
-                  {payment.report.codes.length > 0 ? (
-                    <ul className="code-list">
-                      {payment.report.codes.map((code) => (
-                        <li key={code}>{code}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="muted">None</p>
-                  )}
+                  <h3>Arc verification</h3>
+                  <p className="muted">
+                    {payment.report.normalizedRecipient
+                      ? "Bytecode and USDC denylist reads completed."
+                      : "Onchain reads require a valid recipient."}
+                  </p>
+                  <p className="muted">
+                    Ruleset <code>{RULESET_VERSION}</code>
+                  </p>
                 </div>
 
                 <p className="disclaimer">
@@ -614,6 +645,20 @@ export default function App() {
                 <div>
                   <h2 id="risk-result-title">Risk result</h2>
                   <p>Not checked</p>
+                  <dl className="detail-list">
+                    <div>
+                      <dt>Recipient bytecode</dt>
+                      <dd>Pending valid recipient</dd>
+                    </div>
+                    <div>
+                      <dt>USDC denylist status</dt>
+                      <dd>Pending valid recipient</dd>
+                    </div>
+                    <div>
+                      <dt>URL structure</dt>
+                      <dd>Pending risk check</dd>
+                    </div>
+                  </dl>
                 </div>
               </section>
             )}
@@ -671,6 +716,40 @@ export default function App() {
             )}
           </div>
         </div>
+
+        <section className="proof-strip" aria-labelledby="proof-strip-title">
+          <h2 id="proof-strip-title">Decision trail</h2>
+          <ol>
+            <li>
+              <Search aria-hidden="true" size={18} />
+              <div>
+                <h3>Deterministic checks</h3>
+                <p>Address and URL evidence</p>
+              </div>
+            </li>
+            <li>
+              <Wallet aria-hidden="true" size={18} />
+              <div>
+                <h3>Wallet review</h3>
+                <p>Human confirmation before payment</p>
+              </div>
+            </li>
+            <li>
+              <ShieldCheck aria-hidden="true" size={18} />
+              <div>
+                <h3>Arc Memo record</h3>
+                <p>Ruleset and decision data</p>
+              </div>
+            </li>
+            <li>
+              <ExternalLink aria-hidden="true" size={18} />
+              <div>
+                <h3>Explorer receipt</h3>
+                <p>Available after a confirmed payment</p>
+              </div>
+            </li>
+          </ol>
+        </section>
         </main>
       </div>
 
@@ -685,6 +764,43 @@ export default function App() {
 
       {flow.stage === "submitting" && <PaymentDialog payment={flow.payment} submitting />}
     </>
+  );
+}
+
+function groupFindings(findings: RiskFinding[]): {
+  address: RiskFinding[];
+  website: RiskFinding[];
+} {
+  return {
+    address: findings.filter((finding) => finding.code.startsWith("ADDRESS_")),
+    website: findings.filter((finding) => finding.code.startsWith("URL_")),
+  };
+}
+
+function EvidenceGroup({
+  title,
+  findings,
+  empty,
+}: {
+  title: string;
+  findings: RiskFinding[];
+  empty: string;
+}) {
+  return (
+    <div className="reason-block">
+      <h3>{title}</h3>
+      {findings.length > 0 ? (
+        <ul className="code-list">
+          {findings.map((finding) => (
+            <li key={finding.code}>
+              <code>{finding.code}</code> {finding.title}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted">{empty}</p>
+      )}
+    </div>
   );
 }
 
