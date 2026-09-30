@@ -115,7 +115,20 @@ beforeEach(() => {
 describe("App", () => {
   it("renders the working payment-check form", () => {
     render(<App />);
-    expect(screen.getByRole("heading", { name: "Check before you pay" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Review the evidence before you pay" }),
+    ).toHaveTextContent(/^Review the evidence before you pay$/);
+    expect(screen.getByText("Inspect")).toBeInTheDocument();
+    expect(screen.getByText("Review")).toBeInTheDocument();
+    expect(screen.getByText("Record")).toBeInTheDocument();
+    const complianceFlow = screen.getByRole("list", { name: "Compliance payment flow" });
+    const recordStage = within(complianceFlow).getByText("Record").closest("li");
+    expect(recordStage).not.toBeNull();
+    expect(recordStage?.querySelector(".lucide-file-text")).toBeInTheDocument();
+    expect(recordStage?.querySelector(".lucide-circle-check")).not.toBeInTheDocument();
+    expect(screen.getByText("Recipient bytecode")).toBeInTheDocument();
+    expect(screen.getByText("USDC denylist status")).toBeInTheDocument();
+    expect(screen.getByText("URL structure")).toBeInTheDocument();
     expect(screen.getByLabelText("Recipient address")).toBeInTheDocument();
     expect(screen.getByLabelText("Amount in USDC")).toBeInTheDocument();
     expect(screen.getByLabelText("Associated website (optional)")).toBeInTheDocument();
@@ -126,6 +139,66 @@ describe("App", () => {
     const button = screen.getByRole("button", { name: "Run risk check" });
     expect(button).toBeEnabled();
     expect(button).toHaveAttribute("type", "submit");
+  });
+
+  it("loads the low-indicator example without running a risk check", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Load low-indicator example" }));
+
+    expect(screen.getByLabelText("Recipient address")).toHaveValue(recipient);
+    expect(screen.getByLabelText("Amount in USDC")).toHaveValue("25");
+    expect(screen.getByLabelText("Associated website (optional)")).toHaveValue(
+      "https://merchant.example",
+    );
+    expect(arc.inspectRecipient).not.toHaveBeenCalled();
+    expect(screen.getByText("Not checked")).toBeInTheDocument();
+    expect(screen.queryByText("ADDRESS_ZERO")).not.toBeInTheDocument();
+  });
+
+  it("runs the low-indicator example without high-risk findings", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Load low-indicator example" }));
+    await user.click(screen.getByRole("button", { name: "Run risk check" }));
+
+    const result = await screen.findByRole("region", { name: "Risk result" });
+    expect(within(result).getByText("low")).toBeInTheDocument();
+    expect(arc.inspectRecipient).toHaveBeenCalledWith(recipient);
+    expect(within(result).queryByText("ADDRESS_ZERO")).not.toBeInTheDocument();
+    expect(within(result).queryByText("URL_NO_HTTPS")).not.toBeInTheDocument();
+    expect(within(result).queryByText("URL_IP_HOST")).not.toBeInTheDocument();
+  });
+
+  it("runs the normal risk check for the high-risk example", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Load high-risk example" }));
+    await user.click(screen.getByRole("button", { name: "Run risk check" }));
+
+    expect(await screen.findByText("ADDRESS_ZERO")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "I understand the risk" })).toBeInTheDocument();
+  });
+
+  it("clears a completed high-risk result and accepted risk when loading a preset", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Load high-risk example" }));
+    await user.click(screen.getByRole("button", { name: "Run risk check" }));
+    const override = await screen.findByRole("checkbox", { name: "I understand the risk" });
+    await user.click(override);
+    expect(override).toBeChecked();
+
+    await user.click(screen.getByRole("button", { name: "Load low-indicator example" }));
+
+    expect(screen.getByText("Not checked")).toBeInTheDocument();
+    expect(screen.queryByText("ADDRESS_ZERO")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "I understand the risk" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Review payment" })).not.toBeInTheDocument();
   });
 
   it("verifies Arc Mainnet after the header wallet connects", async () => {
@@ -247,8 +320,34 @@ describe("App", () => {
     await enterPayment({ recipientAddress: "not-an-address" });
 
     expect(await screen.findByText("ADDRESS_INVALID")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Risk result" })).toHaveTextContent(
+      "Onchain reads require a valid recipient.",
+    );
     expect(screen.queryByRole("button", { name: "Review payment" })).not.toBeInTheDocument();
     expect(arc.inspectRecipient).not.toHaveBeenCalled();
+  });
+
+  it("keeps sender matching wording truthful after wallet review is canceled", async () => {
+    render(<App />);
+
+    const user = await enterPayment({ website: "https://example.com" });
+    await user.click(await screen.findByRole("button", { name: "Review payment" }));
+    await user.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    const result = screen.getByRole("region", { name: "Risk result" });
+    expect(result).toHaveTextContent("Sender matching is performed during wallet review.");
+    expect(result).toHaveTextContent("No website structure findings were found.");
+  });
+
+  it("reports that an omitted website was not checked", async () => {
+    render(<App />);
+
+    await enterPayment();
+    await screen.findByRole("button", { name: "Review payment" });
+
+    expect(screen.getByRole("region", { name: "Risk result" })).toHaveTextContent(
+      "No website was supplied for structure checks.",
+    );
   });
 
   it("renders contract and insecure website warning reasons", async () => {
@@ -261,7 +360,32 @@ describe("App", () => {
     const result = screen.getByRole("region", { name: "Risk result" });
     expect(result).toHaveAttribute("aria-live", "polite");
     expect(result).toHaveClass("risk-warning");
-    expect(screen.getByText("URL_NO_HTTPS")).toBeInTheDocument();
+    expect(within(result).getByText("Address evidence")).toBeInTheDocument();
+    expect(within(result).getByText("Website evidence")).toBeInTheDocument();
+    expect(within(result).getByText("Arc verification")).toBeInTheDocument();
+    expect(within(result).getByText(RULESET_VERSION)).toBeInTheDocument();
+    expect(within(result).getByText("ADDRESS_CONTRACT")).toBeInTheDocument();
+    expect(within(result).getByText("URL_NO_HTTPS")).toBeInTheDocument();
+  });
+
+  it("describes the neutral evidence path without claiming completion", () => {
+    render(<App />);
+
+    const path = screen.getByRole("region", { name: "Evidence path" });
+    const expectedStages = [
+      ["Deterministic checks", "Runs before wallet review"],
+      ["Wallet review", "Requires wallet connection"],
+      ["Arc Memo record", "Created only with a confirmed payment"],
+      ["Explorer receipt", "Available after a confirmed payment"],
+    ] as const;
+
+    expectedStages.forEach(([heading, caption]) => {
+      const stage = within(path).getByRole("heading", { level: 3, name: heading }).closest("li");
+      expect(stage).not.toBeNull();
+      expect(within(stage as HTMLElement).getByText(caption, { selector: "p" })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("link", { name: /view transaction/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(transactionHash)).not.toBeInTheDocument();
   });
 
   it("submits a malformed website for explicit URL_INVALID analysis", async () => {
@@ -319,6 +443,29 @@ describe("App", () => {
     expect(screen.queryByText("ADDRESS_DENYLISTED")).not.toBeInTheDocument();
     expect(arc.inspectRecipient).toHaveBeenNthCalledWith(1, recipient);
     expect(arc.inspectRecipient).toHaveBeenNthCalledWith(2, secondRecipient);
+  });
+
+  it("keeps a loaded preset when a superseded inspection resolves", async () => {
+    const inspection = deferred<{ hasCode: boolean; denylisted: boolean }>();
+    arc.inspectRecipient.mockReturnValueOnce(inspection.promise);
+    render(<App />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Recipient address"), secondRecipient);
+    await user.type(screen.getByLabelText("Amount in USDC"), "1.25");
+    await user.click(screen.getByRole("button", { name: "Run risk check" }));
+    await waitFor(() => expect(arc.inspectRecipient).toHaveBeenCalledWith(secondRecipient));
+
+    await user.click(screen.getByRole("button", { name: "Load low-indicator example" }));
+    await act(async () => inspection.resolve({ hasCode: true, denylisted: true }));
+
+    expect(screen.getByLabelText("Recipient address")).toHaveValue(recipient);
+    expect(screen.getByLabelText("Amount in USDC")).toHaveValue("25");
+    expect(screen.getByLabelText("Associated website (optional)")).toHaveValue(
+      "https://merchant.example",
+    );
+    expect(screen.getByText("Not checked")).toBeInTheDocument();
+    expect(screen.queryByText("ADDRESS_CONTRACT")).not.toBeInTheDocument();
+    expect(screen.queryByText("ADDRESS_DENYLISTED")).not.toBeInTheDocument();
   });
 
   it("shows the complete Arc payment review", async () => {
@@ -555,6 +702,8 @@ describe("App", () => {
     expect(screen.getByLabelText("Recipient address")).toBeDisabled();
     expect(screen.getByLabelText("Amount in USDC")).toBeDisabled();
     expect(screen.getByLabelText("Associated website (optional)")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Load low-indicator example" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Load high-risk example" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Run risk check" })).toBeDisabled();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "Payment review" })).not.toBeInTheDocument();

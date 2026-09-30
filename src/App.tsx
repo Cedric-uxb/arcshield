@@ -2,13 +2,14 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   CircleCheck,
   ExternalLink,
+  FileText,
   LoaderCircle,
   Search,
   ShieldCheck,
   TriangleAlert,
   Wallet,
 } from "lucide-react";
-import { analyzePayment, type RiskReport } from "./core/risk";
+import { analyzePayment, type RiskFinding, type RiskReport } from "./core/risk";
 import {
   ARC_CHAIN_ID,
   ARC_EXPLORER_URL,
@@ -60,6 +61,18 @@ type FlowState =
   | { stage: "error"; message: string };
 
 const AMOUNT_ERROR = "Enter a positive USDC amount with up to 6 decimal places";
+const DEMO_PRESETS = {
+  low: {
+    recipient: "0x2222222222222222222222222222222222222222",
+    amount: "25",
+    website: "https://merchant.example",
+  },
+  high: {
+    recipient: "0x0000000000000000000000000000000000000000",
+    amount: "25",
+    website: "http://198.51.100.42/login",
+  },
+} as const;
 
 export default function App() {
   const [recipient, setRecipient] = useState("");
@@ -91,6 +104,18 @@ export default function App() {
   const invalidateReport = () => {
     if (paymentLocked) return;
     requestVersion.current += 1;
+    setFlow({ stage: "editing" });
+    setRiskAccepted(false);
+  };
+
+  const loadDemoPreset = (
+    preset: (typeof DEMO_PRESETS)[keyof typeof DEMO_PRESETS],
+  ) => {
+    if (paymentLocked) return;
+    requestVersion.current += 1;
+    setRecipient(preset.recipient);
+    setAmount(preset.amount);
+    setWebsite(preset.website);
     setFlow({ stage: "editing" });
     setRiskAccepted(false);
   };
@@ -338,6 +363,7 @@ export default function App() {
   const RiskIcon = payment?.report.level === "low" ? CircleCheck : TriangleAlert;
   const broadcastStatus =
     flow.stage === "pending" ? BROADCAST_STATUS[flow.outcome] : undefined;
+  const groupedFindings = groupFindings(payment?.report.findings ?? []);
 
   return (
     <>
@@ -346,6 +372,7 @@ export default function App() {
           <div className="brand">
             <ShieldCheck aria-hidden="true" size={22} />
             <strong>ArcShield</strong>
+            <small>USDC compliance</small>
           </div>
           <div className="header-controls">
             <span
@@ -402,7 +429,22 @@ export default function App() {
 
         <main className="app-shell">
         <div className="page-heading">
-          <h1>Check before you pay</h1>
+          <h1>Review the evidence before you pay</h1>
+          <p>Explainable checks and an Arc-recorded decision trail for USDC payments.</p>
+          <ol className="process-steps" aria-label="Compliance payment flow">
+            <li>
+              <Search aria-hidden="true" size={16} />
+              <strong>Inspect</strong>
+            </li>
+            <li>
+              <TriangleAlert aria-hidden="true" size={16} />
+              <strong>Review</strong>
+            </li>
+            <li>
+              <FileText aria-hidden="true" size={16} />
+              <strong>Record</strong>
+            </li>
+          </ol>
         </div>
 
         <div className="workspace-grid">
@@ -415,6 +457,27 @@ export default function App() {
             </div>
 
             <form noValidate onSubmit={submitRiskCheck}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={paymentLocked}
+                  style={{ flex: "1 1 12rem", minHeight: "2.25rem", padding: "0.375rem 0.75rem" }}
+                  onClick={() => loadDemoPreset(DEMO_PRESETS.low)}
+                >
+                  Load low-indicator example
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={paymentLocked}
+                  style={{ flex: "1 1 12rem", minHeight: "2.25rem", padding: "0.375rem 0.75rem" }}
+                  onClick={() => loadDemoPreset(DEMO_PRESETS.high)}
+                >
+                  Load high-risk example
+                </button>
+              </div>
+
               <label>
                 Recipient address
                 <input
@@ -510,17 +573,31 @@ export default function App() {
                   </div>
                 </dl>
 
+                <EvidenceGroup
+                  title="Address evidence"
+                  findings={groupedFindings.address}
+                  empty="Bytecode and USDC denylist checks found no warnings. Sender matching is performed during wallet review."
+                />
+                <EvidenceGroup
+                  title="Website evidence"
+                  findings={groupedFindings.website}
+                  empty={
+                    payment.website.trim()
+                      ? "No website structure findings were found."
+                      : "No website was supplied for structure checks."
+                  }
+                />
+
                 <div className="reason-block">
-                  <h3>Reason codes</h3>
-                  {payment.report.codes.length > 0 ? (
-                    <ul className="code-list">
-                      {payment.report.codes.map((code) => (
-                        <li key={code}>{code}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="muted">None</p>
-                  )}
+                  <h3>Arc verification</h3>
+                  <p className="muted">
+                    {payment.report.normalizedRecipient
+                      ? "Bytecode and USDC denylist reads completed."
+                      : "Onchain reads require a valid recipient."}
+                  </p>
+                  <p className="muted">
+                    Ruleset <code>{RULESET_VERSION}</code>
+                  </p>
                 </div>
 
                 <p className="disclaimer">
@@ -569,6 +646,20 @@ export default function App() {
                 <div>
                   <h2 id="risk-result-title">Risk result</h2>
                   <p>Not checked</p>
+                  <dl className="detail-list">
+                    <div>
+                      <dt>Recipient bytecode</dt>
+                      <dd>Pending valid recipient</dd>
+                    </div>
+                    <div>
+                      <dt>USDC denylist status</dt>
+                      <dd>Pending valid recipient</dd>
+                    </div>
+                    <div>
+                      <dt>URL structure</dt>
+                      <dd>Pending risk check</dd>
+                    </div>
+                  </dl>
                 </div>
               </section>
             )}
@@ -626,6 +717,40 @@ export default function App() {
             )}
           </div>
         </div>
+
+        <section className="proof-strip" aria-labelledby="proof-strip-title">
+          <h2 id="proof-strip-title">Evidence path</h2>
+          <ol>
+            <li>
+              <Search aria-hidden="true" size={18} />
+              <div>
+                <h3>Deterministic checks</h3>
+                <p>Runs before wallet review</p>
+              </div>
+            </li>
+            <li>
+              <Wallet aria-hidden="true" size={18} />
+              <div>
+                <h3>Wallet review</h3>
+                <p>Requires wallet connection</p>
+              </div>
+            </li>
+            <li>
+              <FileText aria-hidden="true" size={18} />
+              <div>
+                <h3>Arc Memo record</h3>
+                <p>Created only with a confirmed payment</p>
+              </div>
+            </li>
+            <li>
+              <ExternalLink aria-hidden="true" size={18} />
+              <div>
+                <h3>Explorer receipt</h3>
+                <p>Available after a confirmed payment</p>
+              </div>
+            </li>
+          </ol>
+        </section>
         </main>
       </div>
 
@@ -640,6 +765,43 @@ export default function App() {
 
       {flow.stage === "submitting" && <PaymentDialog payment={flow.payment} submitting />}
     </>
+  );
+}
+
+function groupFindings(findings: RiskFinding[]): {
+  address: RiskFinding[];
+  website: RiskFinding[];
+} {
+  return {
+    address: findings.filter((finding) => finding.code.startsWith("ADDRESS_")),
+    website: findings.filter((finding) => finding.code.startsWith("URL_")),
+  };
+}
+
+function EvidenceGroup({
+  title,
+  findings,
+  empty,
+}: {
+  title: string;
+  findings: RiskFinding[];
+  empty: string;
+}) {
+  return (
+    <div className="reason-block">
+      <h3>{title}</h3>
+      {findings.length > 0 ? (
+        <ul className="code-list">
+          {findings.map((finding) => (
+            <li key={finding.code}>
+              <code>{finding.code}</code> {finding.title}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted">{empty}</p>
+      )}
+    </div>
   );
 }
 

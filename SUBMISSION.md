@@ -8,15 +8,15 @@ ArcShield
 
 ## Tagline
 
-Explainable risk indicators before an Arc USDC payment.
+Explainable compliance evidence before an Arc USDC payment.
 
 ## Problem
 
-A wallet confirmation shows transaction parameters but does not explain common warning signs in a recipient address or an associated payment URL. Users need a concise review step that makes deterministic checks visible before they decide whether to sign.
+An Arc USDC payment can reach wallet confirmation without a concise evidence trail explaining common warning signs in the recipient address or associated payment URL. BLI LegalTech/RegTech reviewers need a transparent pre-payment compliance step that shows what was checked, what a human reviewed, and what was acknowledged before signing.
 
 ## Solution
 
-ArcShield is a static React interface that checks an Arc recipient and optional website, displays stable reason codes and severity, and prepares a reviewed USDC payment. High-risk results require an explicit override. ArcShield provides indicators, not a fraud or safety guarantee.
+ArcShield implements that proof path in a static React interface: deterministic recipient and URL checks produce stable reason codes, a human reviews the evidence, and high-risk payments require explicit acknowledgement. If the user proceeds, ArcShield prepares a wallet-approved Arc Memo call whose public metadata omits the raw URL and records only its normalized URL hash, risk level, reason codes, and ruleset version. An explorer receipt is available only after the user confirms the payment and Arc confirms the transaction. This auditable, human-in-the-loop evidence flow is the project's BLI LegalTech/RegTech fit. ArcShield provides indicators, not a fraud or safety guarantee.
 
 ## Arc usage
 
@@ -38,7 +38,8 @@ ArcShield is a static React interface that checks an Arc recipient and optional 
 
 ## DoraHacks BUIDL
 
-- [x] https://dorahacks.io/buidl/49122 (submitted; under review and not publicly visible yet)
+- [x] Public BUIDL profile: https://dorahacks.io/buidl/49122
+- [ ] Submit the existing ArcShield BUIDL to BLI Legal Tech Hackathon 2. The event page still shows `Submit BUIDL`, and ArcShield is not in the event's [submitted BUIDL list](https://dorahacks.io/hackathon/legal-hack-2026/buidl).
 
 ## Arc mainnet transaction URL
 
@@ -47,20 +48,22 @@ ArcShield is a static React interface that checks an Arc recipient and optional 
 ## Screenshots
 
 - [ ] Add a screenshot of the payment input and low/warning result: `<SCREENSHOT_URL_OR_FILE>`
-- [ ] Add a screenshot showing a high-risk result and explicit override: `<SCREENSHOT_URL_OR_FILE>`
+- [x] Desktop high-risk result with the explicit risk-acknowledgement control shown but not accepted and the payment action disabled: [docs/images/arcshield-bli-desktop.png](docs/images/arcshield-bli-desktop.png)
+- [x] Responsive mobile high-risk result with the explicit risk-acknowledgement control shown but not accepted and the payment action disabled: [docs/images/arcshield-bli-mobile.png](docs/images/arcshield-bli-mobile.png)
 - [ ] Add a screenshot of the payment review dialog: `<SCREENSHOT_URL_OR_FILE>`
 - [ ] Add a screenshot of verified transaction success and the Arc explorer record: `<SCREENSHOT_URL_OR_FILE>`
 
+Both checked screenshots are refreshed local evidence matching implementation commit `26a1e17f64d60d64e7baddd709147fcafd3be165`. They do not establish parity with the current public deployment or a submitted BLI build: the public deployment is older, and ArcShield has not been submitted to BLI Legal Tech Hackathon 2.
+
 ## Demo steps
 
-1. Open the verified live URL or run `npm ci` and `npm run dev` locally.
-2. Enter a recipient address, positive USDC amount with at most 6 decimal places, and an optional associated website.
-3. Run the risk check and review the level, normalized recipient, and reason codes.
-4. For a high result, acknowledge the warning explicitly before continuing.
-5. Select **Review payment**, connect an injected browser wallet, and verify sender, recipient, amount, network, and risk indicators.
-6. For a funded, approved demonstration, confirm in the wallet and open the successful transaction in the Arc explorer.
+1. Open the live URL and verify that it contains the **Load low-indicator example** and **Load high-risk example** controls. If either control is missing, run the current branch locally with `npm ci` and `npm run dev`.
+2. Select **Load low-indicator example**, then **Run risk check** to review the clean evidence summary.
+3. Select **Load high-risk example**, then **Run risk check** to review the explicit warning codes and required **I understand the risk** acknowledgement. No wallet is required for steps 2-3.
+4. Select **Review payment** only with a compatible injected browser wallet, then verify the sender, recipient, amount, network, and risk indicators.
+5. For a funded, approved demonstration, confirm the payment in the wallet. Treat the explorer receipt as available only after Arc confirms the transaction.
 
-Do not perform step 6 with real funds until the exact transaction has been reviewed and approved.
+Do not perform step 5 with real funds until the exact transaction has been reviewed and approved.
 
 ## Tech stack
 
@@ -77,22 +80,26 @@ Do not perform step 6 with real funds until the exact transaction has been revie
 - EOA senders only; smart contract wallets are rejected before simulation.
 - Requires an injected EIP-1193 browser wallet and the configured Arc RPC.
 - High-risk results can be overridden after explicit acknowledgement.
-- Current evidence is limited to local automated tests and a local production build until the external checklist below is completed.
+- Functional verification includes automated tests, a production build, and public deployment availability. Local high-risk desktop and mobile screenshots are captured; public deployment parity, submitted-build screenshot proof, and Arc mainnet transaction proof remain outstanding.
 
 ## Evidence checklist
 
 Local verification:
 
-- [x] `npm test` passes at the recorded submission commit.
-- [x] `npm run build` passes in the submission commit.
+- [x] `npm test` passes at implementation commit `26a1e17f64d60d64e7baddd709147fcafd3be165`.
+- [x] `npm run build` passes at implementation commit `26a1e17f64d60d64e7baddd709147fcafd3be165`.
 - [x] `git diff --check` passes before commit.
 - [x] Browser QA completed locally at `1440x900` and `390x844`; low- and high-risk results rendered without overlap or horizontal overflow, and the browser console remained clear.
+- [x] Refreshed local desktop and responsive mobile high-risk screenshots match implementation commit `26a1e17f64d60d64e7baddd709147fcafd3be165`.
 
 External evidence:
 
 - [x] Public repository opens without authentication.
 - [x] Live deployment opens without authentication.
+- [ ] Push or merge the reviewed revision to the public repository, confirm GitHub Pages deployed from that same revision, then verify the preset controls and screenshot links against the public build.
 - [ ] Screenshots match the submitted build.
 - [ ] Arc mainnet transaction is successful and opens in the Arc explorer.
-- [x] Repository URL, live URL, and the Arc Memo contract address are copied into the DoraHacks fields.
+- [x] Repository URL, live URL, and the Arc Memo integration description are saved in the ArcShield BUIDL profile.
+- [ ] Add and verify the exact Arc Memo contract address in the public BUIDL profile before final submission.
+- [ ] ArcShield is attached and submitted to BLI Legal Tech Hackathon 2.
 - [x] Final submission text contains no unverified production, award, traction, or safety claims.
