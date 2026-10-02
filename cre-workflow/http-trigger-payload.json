@@ -1,0 +1,8 @@
+{
+  "recipient": "0x000000000000000000000000000000000000dEaD",
+  "hostname": "example.com",
+  "observedAt": "2026-10-02T15:00:00.000Z",
+  "localRiskLevel": "low",
+  "localReasonCodes": [],
+  "ruleset": "arcshield-2026-09-21"
+}

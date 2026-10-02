@@ -1,0 +1,6 @@
+{
+  "chainSelectorName": "arc-mainnet",
+  "denylistAddress": "0x3600000000000000000000000000000000000004",
+  "rdapBaseUrl": "https://rdap.org/domain/",
+  "newDomainDays": 30
+}

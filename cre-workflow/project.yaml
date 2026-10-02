@@ -1,0 +1,4 @@
+local-simulation:
+  rpcs:
+    - chain-name: arc-mainnet
+      url: https://rpc.mainnet.arc.io
