@@ -69,6 +69,23 @@ The Memo call targets USDC and wraps encoded `transfer(recipient, amount)` calld
 
 The raw website URL is not stored onchain. A URL hash is public metadata and may still be guessable when the original URL comes from a small or predictable set.
 
+## Chainlink CRE workflow
+
+`cre-workflow/` is a separate, read-only compliance orchestration path for the
+Chainlink **Best workflow with CRE** bounty. An HTTP trigger accepts ArcShield's
+local reason codes, reads the Arc Testnet USDC blocklist, and queries
+public RDAP registration data for the submitted hostname. It returns an
+explainable `allow`, `review`, or `block` decision without moving funds or
+writing onchain.
+
+The production payment UI remains on Arc Mainnet. The CRE proof uses Arc
+Testnet because that is the Arc network currently enabled by the CRE platform.
+
+Only the hostname is sent to RDAP; the full payment URL is not sent. RDAP and
+the local rules are evidence inputs, not proof that a domain or payment is safe.
+See [`cre-workflow/README.md`](cre-workflow/README.md) for the exact simulation
+command and evidence boundary.
+
 ## Local use
 
 Prerequisite: a Node.js version accepted by `package.json` (`^22.22.2`, `^24.15.0`, or `>=26.0.0`).
@@ -97,7 +114,7 @@ npm run build
 ## Limitations
 
 - The checks are transparent heuristics, not fraud detection, recipient identity verification, or a safety guarantee.
-- There is no reputation feed, threat-intelligence service, domain ownership check, content scan, DNS history, or certificate-age analysis.
+- The browser payment flow has no reputation feed, threat-intelligence service, domain ownership check, content scan, DNS history, or certificate-age analysis. The optional CRE simulation adds public RDAP registration evidence only.
 - A high-risk warning can be overridden by the user; ArcShield does not block the wallet itself.
 - Only injected browser wallets using an EOA sender are supported. Smart contract wallets are not supported.
 - The optional website is analyzed only as a URL string. ArcShield does not visit or validate the site.

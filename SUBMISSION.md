@@ -39,7 +39,14 @@ ArcShield implements that proof path in a static React interface: deterministic 
 ## DoraHacks BUIDL
 
 - [x] Public BUIDL profile: https://dorahacks.io/buidl/49122
-- [ ] Submit the existing ArcShield BUIDL to BLI Legal Tech Hackathon 2. The event page still shows `Submit BUIDL`, and ArcShield is not in the event's [submitted BUIDL list](https://dorahacks.io/hackathon/legal-hack-2026/buidl).
+- [x] Submitted to BLI Legal Tech Hackathon 2; the submission is under review and is not yet an approved public event-list entry.
+
+## Chainlink CRE bounty evidence
+
+- [x] Added a standalone HTTP-triggered CRE workflow that reads the Arc Testnet USDC blocklist and public RDAP domain-registration evidence.
+- [x] `bun test`, TypeScript typecheck, and `cre workflow build` pass locally with CRE CLI `v1.36.0`.
+- [x] Authenticated `cre workflow simulate` completed successfully; exact hashes and output are recorded in [`cre-workflow/SIMULATION.md`](cre-workflow/SIMULATION.md).
+- [ ] Add the Chainlink **Best workflow with CRE** bounty to the BLI submission after successful simulation is verified.
 
 ## Arc mainnet transaction URL
 
@@ -75,7 +82,7 @@ Do not perform step 5 with real funds until the exact transaction has been revie
 
 ## Limitations
 
-- Deterministic indicators only; no fraud guarantee, identity verification, reputation data, threat-intelligence feed, or website content scan.
+- Deterministic indicators only; no fraud guarantee, identity verification, threat-intelligence feed, or website content scan. The optional CRE workflow adds Arc denylist and public RDAP registration evidence.
 - The optional URL is parsed locally and not visited. Only its normalized hash is included in Memo metadata, and predictable URLs may still be guessable from a public hash.
 - EOA senders only; smart contract wallets are rejected before simulation.
 - Requires an injected EIP-1193 browser wallet and the configured Arc RPC.
@@ -101,5 +108,5 @@ External evidence:
 - [ ] Arc mainnet transaction is successful and opens in the Arc explorer.
 - [x] Repository URL, live URL, and the Arc Memo integration description are saved in the ArcShield BUIDL profile.
 - [ ] Add and verify the exact Arc Memo contract address in the public BUIDL profile before final submission.
-- [ ] ArcShield is attached and submitted to BLI Legal Tech Hackathon 2.
+- [x] ArcShield is attached and submitted to BLI Legal Tech Hackathon 2 and is currently under review.
 - [x] Final submission text contains no unverified production, award, traction, or safety claims.

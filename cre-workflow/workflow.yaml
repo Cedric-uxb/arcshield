@@ -1,0 +1,7 @@
+local-simulation:
+  user-workflow:
+    workflow-name: "arcshield-compliance-evidence"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.json"
+    secrets-path: ""

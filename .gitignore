@@ -1,6 +1,8 @@
 .worktrees/
 node_modules/
 dist/
+binary.wasm
+.cre_build_tmp.js
 
 .env*
 !.env.example
