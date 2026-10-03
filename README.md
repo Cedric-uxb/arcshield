@@ -73,10 +73,13 @@ The raw website URL is not stored onchain. A URL hash is public metadata and may
 
 `cre-workflow/` is a separate, read-only compliance orchestration path for the
 Chainlink **Best workflow with CRE** bounty. An HTTP trigger accepts ArcShield's
-local reason codes, reads the Arc mainnet USDC denylist contract, and queries
+local reason codes, reads the Arc Testnet USDC blocklist, and queries
 public RDAP registration data for the submitted hostname. It returns an
 explainable `allow`, `review`, or `block` decision without moving funds or
 writing onchain.
+
+The production payment UI remains on Arc Mainnet. The CRE proof uses Arc
+Testnet because that is the Arc network currently enabled by the CRE platform.
 
 Only the hostname is sent to RDAP; the full payment URL is not sent. RDAP and
 the local rules are evidence inputs, not proof that a domain or payment is safe.

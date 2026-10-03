@@ -22,8 +22,10 @@ import { z } from "zod";
 
 export const configSchema = z.object({
   chainSelectorName: z.string(),
-  denylistAddress: z.string().refine(isAddress, "Invalid denylist address"),
-  rdapBaseUrl: z.string().url(),
+  blocklistContractAddress: z
+    .string()
+    .refine(isAddress, "Invalid blocklist contract address"),
+  rdapBaseUrl: z.string().min(1),
   newDomainDays: z.number().int().positive(),
 });
 
@@ -36,7 +38,9 @@ const payloadSchema = z.object({
     .trim()
     .toLowerCase()
     .max(253)
-    .regex(/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/),
+    .regex(/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/)
+    // ponytail: direct Verisign RDAP avoids redirects; add IANA routing when other TLDs matter.
+    .refine((hostname) => hostname.endsWith(".com"), "Only .com RDAP is supported"),
   observedAt: z.string().datetime(),
   localRiskLevel: z.enum(["low", "warning", "high"]),
   localReasonCodes: z.array(z.string().min(1).max(64)).max(20),
@@ -56,10 +60,10 @@ export type ComplianceDecision = {
   domainAgeDays: number | null;
 };
 
-const denylistAbi = [
+const blocklistAbi = [
   {
     type: "function",
-    name: "isDenylisted",
+    name: "isBlacklisted",
     stateMutability: "view",
     inputs: [{ name: "account", type: "address" }],
     outputs: [{ name: "", type: "bool" }],
@@ -108,14 +112,14 @@ export function decideCompliance(
   return { decision, reasonCodes, domainAgeDays };
 }
 
-function readArcDenylist(
+function readArcBlocklist(
   runtime: Runtime<Config>,
   recipient: Address,
 ): boolean {
   const network = getNetwork({
     chainFamily: "evm",
     chainSelectorName: runtime.config.chainSelectorName,
-    isTestnet: false,
+    isTestnet: true,
   });
   if (!network) {
     throw new Error(`Unsupported CRE network: ${runtime.config.chainSelectorName}`);
@@ -123,15 +127,15 @@ function readArcDenylist(
 
   const client = new cre.capabilities.EVMClient(network.chainSelector.selector);
   const callData = encodeFunctionData({
-    abi: denylistAbi,
-    functionName: "isDenylisted",
+    abi: blocklistAbi,
+    functionName: "isBlacklisted",
     args: [recipient],
   });
   const response = client
     .callContract(runtime, {
       call: encodeCallMsg({
         from: zeroAddress,
-        to: runtime.config.denylistAddress as Address,
+        to: runtime.config.blocklistContractAddress as Address,
         data: callData,
       }),
       blockNumber: LAST_FINALIZED_BLOCK_NUMBER,
@@ -139,8 +143,8 @@ function readArcDenylist(
     .result();
 
   return decodeFunctionResult({
-    abi: denylistAbi,
-    functionName: "isDenylisted",
+    abi: blocklistAbi,
+    functionName: "isBlacklisted",
     data: bytesToHex(response.data),
   });
 }
@@ -186,7 +190,7 @@ export function onHttpTrigger(runtime: Runtime<Config>, raw: HTTPPayload) {
   const payload = payloadSchema.parse(
     JSON.parse(new TextDecoder().decode(raw.input)),
   );
-  const denylisted = readArcDenylist(runtime, payload.recipient as Address);
+  const denylisted = readArcBlocklist(runtime, payload.recipient as Address);
   const domainEvidence = fetchDomainEvidence(runtime, payload.hostname);
   const result = decideCompliance(
     payload,

@@ -43,9 +43,9 @@ ArcShield implements that proof path in a static React interface: deterministic 
 
 ## Chainlink CRE bounty evidence
 
-- [x] Added a standalone HTTP-triggered CRE workflow that reads the Arc mainnet USDC denylist and public RDAP domain-registration evidence.
+- [x] Added a standalone HTTP-triggered CRE workflow that reads the Arc Testnet USDC blocklist and public RDAP domain-registration evidence.
 - [x] `bun test`, TypeScript typecheck, and `cre workflow build` pass locally with CRE CLI `v1.36.0`.
-- [ ] Complete authenticated `cre workflow simulate` and save the successful output as submission evidence.
+- [x] Authenticated `cre workflow simulate` completed successfully; exact hashes and output are recorded in [`cre-workflow/SIMULATION.md`](cre-workflow/SIMULATION.md).
 - [ ] Add the Chainlink **Best workflow with CRE** bounty to the BLI submission after successful simulation is verified.
 
 ## Arc mainnet transaction URL
